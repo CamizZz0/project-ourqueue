@@ -4,6 +4,8 @@ import { sendSuccess, sendError } from "./utils/response.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 
 import authRoutes from "./routes/authRoutes.js";
+import queueRoutes from "./routes/queueRoutes.js";
+import entryRoutes from "./routes/entryRoutes.js";
 
 const app = express();
 
@@ -24,6 +26,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // Rute Autentikasi
 app.use("/api/auth", authRoutes);
+
+// Rute Manajemen Antrean (Protected dengan JWT)
+app.use("/api/queues", queueRoutes);
+
+// Rute Publik Pengambilan Tiket Peserta (Guest - Tanpa JWT)
+app.use("/api/entries", entryRoutes);
 
 // Health Check Endpoint
 app.get("/api/health", (req, res) => {
