@@ -1,9 +1,33 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --color-ink: #241f14;
+  --color-ink-soft: #6b6252;
+  --color-accent: #ffbe00;
+  --color-accent-dark: #cc9800;
+  --color-accent-light: #fff4cc;
+  --color-paper: #fdfbf6;
+  --color-mist: #f0ece0;
+  --color-mist-dark: #e1dac6;
+}
+
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased font-sans;
+    @apply antialiased;
+    background-color: var(--color-paper);
+    color: var(--color-ink);
     margin: 0;
     min-height: 100vh;
+  }
+}
+
+@layer utilities {
+  .ticket-number {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
   }
 }
