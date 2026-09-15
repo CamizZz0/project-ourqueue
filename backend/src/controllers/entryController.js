@@ -4,15 +4,10 @@ import { db } from "../config/database.js";
 import { queues, queueEntries } from "../db/schema.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 
-/**
- * Controller bagi Peserta (Guest) untuk Mengambil Nomor Antrean Baru
- * Public endpoint (tanpa autentikasi JWT)
- */
 export const takeQueueEntry = async (req, res, next) => {
   try {
     const { queue_id, data_peserta } = req.body;
 
-    // 1. Validasi input dasar
     if (!queue_id) {
       return sendError(res, "ID antrean (queue_id) wajib disertakan.", null, 400);
     }
@@ -26,10 +21,7 @@ export const takeQueueEntry = async (req, res, next) => {
       return sendError(res, "ID antrean (queue_id) harus berupa angka yang valid.", null, 400);
     }
 
-    // 2. Jalankan Database Transaction untuk mencegah Race Condition
     const transactionResult = await db.transaction(async (tx) => {
-      // Kunci baris antrean dengan FOR UPDATE.
-      // Request lain yang mendaftar di antrean yang sama di detik yang sama akan antre menunggu giliran.
       const [queue] = await tx
         .select()
         .from(queues)
@@ -40,7 +32,6 @@ export const takeQueueEntry = async (req, res, next) => {
         return { error: "Antrean tidak ditemukan.", statusCode: 404 };
       }
 
-      // Pastikan status antrean sedang aktif/buka
       if (queue.status !== "active") {
         return {
           error: "Antrean ini sedang tidak menerima pendaftaran tiket baru (status tidak aktif).",
@@ -48,7 +39,6 @@ export const takeQueueEntry = async (req, res, next) => {
         };
       }
 
-      // 3. Validasi kelengkapan data_peserta sesuai enabled_fields yang ditentukan admin
       const requiredFields = Array.isArray(queue.enabled_fields)
         ? queue.enabled_fields
         : [];
@@ -68,7 +58,6 @@ export const takeQueueEntry = async (req, res, next) => {
         };
       }
 
-      // 4. Hitung nomor_antrean berikutnya secara berurutan dan aman
       const [lastEntry] = await tx
         .select({
           maxNumber: sql`COALESCE(MAX(${queueEntries.nomor_antrean}), 0)`.as("maxNumber"),
@@ -78,17 +67,15 @@ export const takeQueueEntry = async (req, res, next) => {
 
       const nextQueueNumber = Number(lastEntry?.maxNumber || 0) + 1;
 
-      // 5. Generate token unik peserta (UUID v4) untuk disimpan di localStorage frontend
       const participantToken = crypto.randomUUID();
 
-      // 6. Simpan tiket peserta ke tabel queue_entries
       const [newEntry] = await tx
         .insert(queueEntries)
         .values({
           queue_id: numericQueueId,
           data_peserta,
           nomor_antrean: nextQueueNumber,
-          status: "waiting", // Status awal: waiting
+          status: "waiting",
           participant_token: participantToken,
         })
         .returning();
@@ -125,10 +112,6 @@ export const takeQueueEntry = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Mengecek Status Tiket Peserta Berdasarkan participant_token
- * Public endpoint (digunakan oleh tamu untuk live tracking nomor panggilan)
- */
 export const getEntryByToken = async (req, res, next) => {
   try {
     const { token } = req.params;
@@ -137,7 +120,6 @@ export const getEntryByToken = async (req, res, next) => {
       return sendError(res, "Participant token wajib disertakan.", null, 400);
     }
 
-    // Cari tiket berdasarkan token unik
     const [entry] = await db
       .select({
         id: queueEntries.id,
@@ -159,7 +141,6 @@ export const getEntryByToken = async (req, res, next) => {
       return sendError(res, "Tiket antrean tidak ditemukan.", null, 404);
     }
 
-    // Hitung berapa banyak peserta yang masih berstatus 'waiting' di depan nomor ini
     const [aheadCountResult] = await db
       .select({
         count: sql`COUNT(*)`.as("count"),
@@ -184,12 +165,6 @@ export const getEntryByToken = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Admin Mengubah Status Tiket Peserta
- * PATCH /api/entries/:id/status (Protected JWT + cek ownership antrean)
- * Body: { status: 'waiting' | 'calling' | 'completed' | 'skipped' | 'cancelled' }
- * Contoh alur: waiting -> calling (panggil) -> completed (selesai) / skipped (lewati)
- */
 export const updateEntryStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -210,7 +185,6 @@ export const updateEntryStatus = async (req, res, next) => {
       );
     }
 
-    // Cari tiket + pastikan antrean induknya milik user yang login
     const [existing] = await db
       .select({
         entry: queueEntries,
@@ -250,3 +224,45 @@ export const updateEntryStatus = async (req, res, next) => {
   }
 };
 
+export const deleteEntry = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const entryId = parseInt(req.params.id, 10);
+
+    if (isNaN(entryId)) {
+      return sendError(res, "ID tiket harus berupa angka yang valid.", null, 400);
+    }
+
+    const [existing] = await db
+      .select({
+        entry: queueEntries,
+        owner_id: queues.user_id,
+      })
+      .from(queueEntries)
+      .innerJoin(queues, eq(queueEntries.queue_id, queues.id))
+      .where(eq(queueEntries.id, entryId))
+      .limit(1);
+
+    if (!existing) {
+      return sendError(res, "Tiket antrean tidak ditemukan.", null, 404);
+    }
+
+    if (existing.owner_id !== userId) {
+      return sendError(
+        res,
+        "Akses ditolak. Tiket ini bukan bagian dari antrean milik Anda.",
+        null,
+        403
+      );
+    }
+
+    await db.delete(queueEntries).where(eq(queueEntries.id, entryId));
+
+    return sendSuccess(res, `Tiket nomor ${existing.entry.nomor_antrean} berhasil dihapus.`, {
+      deleted_entry_id: entryId,
+      nomor_antrean: existing.entry.nomor_antrean,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

@@ -273,6 +273,38 @@
           "response": []
         },
         {
+          "name": "Reset Antrean (hapus semua tiket) (BARU)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{queue_id}}/reset", "host": ["{{base_url}}"], "path": ["api", "queues", "{{queue_id}}", "reset"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Regenerate QR Token (BARU)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{queue_id}}/regenerate-qr", "host": ["{{base_url}}"], "path": ["api", "queues", "{{queue_id}}", "regenerate-qr"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.data && json.data.queue) {",
+                  "  pm.collectionVariables.set('qr_token', json.data.queue.qr_code_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
           "name": "Delete Antrean (BARU)",
           "request": {
             "method": "DELETE",
@@ -352,6 +384,15 @@
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{base_url}}/api/entries/{{entry_id}}/status", "host": ["{{base_url}}"], "path": ["api", "entries", "{{entry_id}}", "status"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Tiket (Admin) (BARU)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/entries/{{entry_id}}", "host": ["{{base_url}}"], "path": ["api", "entries", "{{entry_id}}"] }
           },
           "response": []
         }

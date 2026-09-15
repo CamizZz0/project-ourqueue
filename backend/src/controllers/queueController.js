@@ -4,33 +4,23 @@ import { db } from "../config/database.js";
 import { queues, queueEntries } from "../db/schema.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 
-/**
- * Controller untuk Membuat Antrean Baru (Create Queue)
- * Endpoint ini terproteksi JWT, user_id didapatkan dari req.user.id
- */
 export const createQueue = async (req, res, next) => {
   try {
     const { nama_antrean, deskripsi, enabled_fields } = req.body;
 
-    // 1. Validasi input wajib
     if (!nama_antrean || nama_antrean.trim() === "") {
       return sendError(res, "Nama antrean wajib diisi.", null, 400);
     }
 
-    // 2. Ambil ID pengguna pembuat antrean dari payload JWT (yang disisipkan authMiddleware)
     const userId = req.user.id;
 
-    // 3. Generate token unik acak untuk QR Code (16 karakter heksadesimal)
-    // Contoh output: "a7c8f9b2d1e43c5b"
     const qrCodeToken = crypto.randomBytes(8).toString("hex");
 
-    // 4. Tentukan field pendaftaran yang diaktifkan (default: nama dan nomor telepon)
     const fields =
       Array.isArray(enabled_fields) && enabled_fields.length > 0
         ? enabled_fields
         : ["nama", "nomor_telepon"];
 
-    // 5. Simpan data antrean ke database
     const [newQueue] = await db
       .insert(queues)
       .values({
@@ -39,7 +29,7 @@ export const createQueue = async (req, res, next) => {
         deskripsi: deskripsi ? deskripsi.trim() : null,
         enabled_fields: fields,
         qr_code_token: qrCodeToken,
-        status: "active", // Status otomatis diset 'active' (buka)
+        status: "active",
       })
       .returning();
 
@@ -56,13 +46,6 @@ export const createQueue = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Mengambil Semua Antrean Milik User yang Login
- * GET /api/queues (Protected JWT)
- * Query: ?page=1&limit=20&search=&status=active|paused|closed
- * Mengembalikan daftar antrean + ringkasan statistik tiap antrean + meta pagination.
- * Backward-compatible: `queues` dan `total` (jumlah item di halaman ini) tetap ada.
- */
 export const getMyQueues = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -93,7 +76,6 @@ export const getMyQueues = async (req, res, next) => {
       );
     }
 
-    // Total keseluruhan (untuk meta) — 1 query ringan tanpa stats per antrean
     const [countRow] = await db
       .select({ count: sql`COUNT(*)`.as("count") })
       .from(queues)
@@ -108,7 +90,6 @@ export const getMyQueues = async (req, res, next) => {
       .limit(limit)
       .offset(offset);
 
-    // Hitung statistik per antrean (hanya untuk item di halaman ini)
     const queuesWithStats = await Promise.all(
       myQueues.map(async (queue) => {
         const [stats] = await db
@@ -156,11 +137,6 @@ export const getMyQueues = async (req, res, next) => {
   }
 };
 
-/**
- * Controller Publik untuk Resolve QR Token menjadi Info Antrean
- * GET /api/queues/qr/:qrToken (Public, tanpa JWT)
- * Dipakai halaman guest /q/:qrToken untuk menampilkan form ambil tiket.
- */
 export const getQueueByQrToken = async (req, res, next) => {
   try {
     const { qrToken } = req.params;
@@ -186,7 +162,6 @@ export const getQueueByQrToken = async (req, res, next) => {
       return sendError(res, "Antrean tidak ditemukan (QR token tidak valid).", null, 404);
     }
 
-    // Statistik live untuk halaman publik: antrean menunggu & nomor sedang dipanggil
     const [waitingCount] = await db
       .select({ count: sql`COUNT(*)`.as("count") })
       .from(queueEntries)
@@ -224,11 +199,6 @@ export const getQueueByQrToken = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Mengubah Status Antrean (buka / jeda / tutup)
- * PATCH /api/queues/:id/status (Protected JWT + cek ownership)
- * Body: { status: 'active' | 'paused' | 'closed' }
- */
 export const updateQueueStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -249,7 +219,6 @@ export const updateQueueStatus = async (req, res, next) => {
       );
     }
 
-    // Pastikan antrean milik user yang login (cegah akses silang)
     const [existing] = await db
       .select()
       .from(queues)
@@ -279,13 +248,6 @@ export const updateQueueStatus = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Mengambil Daftar Peserta / Tiket dalam Satu Antrean
- * GET /api/queues/:id/entries (Protected JWT + cek ownership)
- * Query: ?status=waiting|calling|...&page=1&limit=50
- * Backward-compatible: `entries`, `total` (jumlah item di halaman ini),
- * `stats` dan `queue_info` tetap ada; ditambah `meta`.
- */
 export const getQueueEntries = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -299,7 +261,6 @@ export const getQueueEntries = async (req, res, next) => {
       return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
     }
 
-    // Verifikasi kepemilikan antrean
     const [queue] = await db
       .select()
       .from(queues)
@@ -334,7 +295,6 @@ export const getQueueEntries = async (req, res, next) => {
       conditions.push(eq(queueEntries.status, statusFilter));
     }
 
-    // Total item sesuai filter (untuk meta pagination)
     const [countRow] = await db
       .select({ count: sql`COUNT(*)`.as("count") })
       .from(queueEntries)
@@ -349,7 +309,6 @@ export const getQueueEntries = async (req, res, next) => {
       .limit(limit)
       .offset(offset);
 
-    // Ringkasan statistik keseluruhan (tidak terpengaruh filter maupun pagination)
     const [stats] = await db
       .select({
         total: sql`COUNT(*)`.as("total"),
@@ -395,10 +354,6 @@ export const getQueueEntries = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Mengambil Detail Satu Antrean Milik User
- * GET /api/queues/:id (Protected JWT + cek ownership)
- */
 export const getQueueDetailById = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -455,12 +410,6 @@ export const getQueueDetailById = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Mengedit Data Antrean
- * PUT /api/queues/:id (Protected JWT + cek ownership)
- * Body (parsial): { nama_antrean, deskripsi, enabled_fields }
- * enabled_fields baru hanya berlaku untuk pendaftar berikutnya.
- */
 export const updateQueue = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -527,11 +476,6 @@ export const updateQueue = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Menghapus Antrean
- * DELETE /api/queues/:id (Protected JWT + cek ownership)
- * Entries ikut terhapus via ON DELETE CASCADE.
- */
 export const deleteQueue = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -566,14 +510,6 @@ export const deleteQueue = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Memanggil Nomor Berikutnya Secara Atomik
- * POST /api/queues/:id/call-next (Protected JWT + cek ownership)
- * - Queue harus 'active', jika paused/closed -> 400
- * - calling tertua (jika ada) otomatis -> 'completed'
- * - waiting terkecil -> 'calling'
- * Dijalankan dalam transaksi + FOR UPDATE agar 2 admin tidak dapat nomor sama.
- */
 export const callNextEntry = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -584,7 +520,6 @@ export const callNextEntry = async (req, res, next) => {
     }
 
     const result = await db.transaction(async (tx) => {
-      // Kunci + verifikasi ownership dalam satu query
       const [queue] = await tx
         .select()
         .from(queues)
@@ -603,7 +538,6 @@ export const callNextEntry = async (req, res, next) => {
         };
       }
 
-      // Selesaikan calling tertua (hanya 1 agar riwayat jelas)
       let completedEntry = null;
       const [currentCalling] = await tx
         .select()
@@ -627,7 +561,6 @@ export const callNextEntry = async (req, res, next) => {
         completedEntry = done;
       }
 
-      // Panggil waiting terkecil
       const [nextWaiting] = await tx
         .select()
         .from(queueEntries)
@@ -655,7 +588,6 @@ export const callNextEntry = async (req, res, next) => {
         .where(eq(queueEntries.id, nextWaiting.id))
         .returning();
 
-      // Sisa waiting setelah pemanggilan
       const [remaining] = await tx
         .select({ count: sql`COUNT(*)`.as("count") })
         .from(queueEntries)
@@ -689,13 +621,6 @@ export const callNextEntry = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Memanggil Ulang Nomor yang Sedang Aktif (tanpa mengubah status)
- * POST /api/queues/:id/recall (Protected JWT + cek ownership)
- * Body opsional: { entry_id } — panggil ulang tiket calling tertentu.
- * Tanpa body: panggil ulang calling dengan nomor terkecil.
- * Tidak mengubah status apa pun; frontend memakai respons ini untuk bunyi/display ulang.
- */
 export const recallCurrentEntry = async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -785,3 +710,85 @@ export const recallCurrentEntry = async (req, res, next) => {
   }
 };
 
+export const resetQueue = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const queueId = parseInt(req.params.id, 10);
+
+    if (isNaN(queueId)) {
+      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
+    }
+
+    const [queue] = await db
+      .select({ id: queues.id })
+      .from(queues)
+      .where(and(eq(queues.id, queueId), eq(queues.user_id, userId)))
+      .limit(1);
+
+    if (!queue) {
+      return sendError(
+        res,
+        "Antrean tidak ditemukan atau Anda tidak memiliki akses.",
+        null,
+        404
+      );
+    }
+
+    const deleted = await db
+      .delete(queueEntries)
+      .where(eq(queueEntries.queue_id, queueId))
+      .returning({ id: queueEntries.id });
+
+    return sendSuccess(res, "Antrean berhasil di-reset. Semua tiket telah dihapus.", {
+      queue_id: queueId,
+      deleted_count: deleted.length,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const regenerateQrToken = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const queueId = parseInt(req.params.id, 10);
+
+    if (isNaN(queueId)) {
+      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
+    }
+
+    const [queue] = await db
+      .select({ id: queues.id })
+      .from(queues)
+      .where(and(eq(queues.id, queueId), eq(queues.user_id, userId)))
+      .limit(1);
+
+    if (!queue) {
+      return sendError(
+        res,
+        "Antrean tidak ditemukan atau Anda tidak memiliki akses.",
+        null,
+        404
+      );
+    }
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const qrCodeToken = crypto.randomBytes(8).toString("hex");
+        const [updated] = await db
+          .update(queues)
+          .set({ qr_code_token: qrCodeToken })
+          .where(eq(queues.id, queueId))
+          .returning();
+
+        return sendSuccess(res, "QR token baru berhasil dibuat. QR lama sudah tidak berlaku.", {
+          queue: updated,
+        });
+      } catch (err) {
+        if (err?.code !== "23505" || attempt === 1) throw err;
+      }
+    }
+  } catch (error) {
+    next(error);
+  }
+};
