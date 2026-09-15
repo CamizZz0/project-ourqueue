@@ -2,108 +2,360 @@
   "info": {
     "_postman_id": "b2191b14-bf9c-4dd7-b38e-e13d576e6dc7",
     "name": "API OurQueue",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "_exporter_id": "57512438"
+    "description": "Koleksi lengkap OurQueue. Urutan test: Register/Login -> Buat Antrean -> Ambil Tiket (x3) -> Detail -> Call Next (x2) -> Daftar Entries -> Update -> Delete.\n\nGunakan variable {{token}}, {{queue_id}}, {{qr_token}}, {{participant_token}} yang terisi otomatis via script di tiap request.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:5001" },
+    { "key": "token", "value": "" },
+    { "key": "queue_id", "value": "1" },
+    { "key": "qr_token", "value": "" },
+    { "key": "entry_id", "value": "1" },
+    { "key": "participant_token", "value": "" }
+  ],
   "item": [
     {
-      "name": "Register",
+      "name": "0. Health Check",
       "request": {
-        "method": "POST",
+        "auth": { "type": "noauth" },
+        "method": "GET",
         "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"nama\": \"Novry\",\r\n  \"email\": \"novry@example.com\",\r\n  \"password\": \"password123\"\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": {
-          "raw": "http://localhost:5001/api/auth/register",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "5001",
-          "path": [
-            "api",
-            "auth",
-            "register"
-          ]
-        }
+        "url": { "raw": "{{base_url}}/api/health", "host": ["{{base_url}}"], "path": ["api", "health"] }
       },
       "response": []
     },
     {
-      "name": "Login",
-      "request": {
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"email\": \"novry@example.com\",\r\n  \"password\": \"password123\"\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": {
-          "raw": "http://localhost:5001/api/auth/login",
-          "protocol": "http",
-          "host": [
-            "localhost"
-          ],
-          "port": "5001",
-          "path": [
-            "api",
-            "auth",
-            "login"
-          ]
-        }
-      },
-      "response": []
-    },
-    {
-      "name": "Buat Antrian",
-      "request": {
-        "auth": {
-          "type": "bearer",
-          "bearer": [
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nama\": \"Novry\",\n  \"email\": \"novry@example.com\",\n  \"password\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/register", "host": ["{{base_url}}"], "path": ["api", "auth", "register"] }
+          },
+          "event": [
             {
-              "key": "token",
-              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiZW1haWwiOiJub3ZyeUBleGFtcGxlLmNvbSIsIm5hbWEiOiJOb3ZyeSIsImlhdCI6MTc4OTEzNjk3OCwiZXhwIjoxNzg5NzQxNzc4fQ.-Vqnj3w1VsTxcuf3W0zL45jCeHmz18s6dl_pcjdc5Sw",
-              "type": "string"
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.data && json.data.token) { pm.collectionVariables.set('token', json.data.token); }"
+                ]
+              }
             }
-          ]
-        },
-        "method": "POST",
-        "header": [],
-        "body": {
-          "mode": "raw",
-          "raw": "{\r\n  \"nama_antrean\": \"Registrasi Event UniVerse\",\r\n  \"deskripsi\": \"Antrean untuk pendaftaran ulang peserta event\",\r\n  \"enabled_fields\": \"nama_dan_nomor\"\r\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
-        },
-        "url": {
-          "raw": "http://localhost:5001/api/queues",
-          "protocol": "http",
-          "host": [
-            "localhost"
           ],
-          "port": "5001",
-          "path": [
-            "api",
-            "queues"
-          ]
+          "response": []
+        },
+        {
+          "name": "Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"novry@example.com\",\n  \"password\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.data && json.data.token) { pm.collectionVariables.set('token', json.data.token); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/auth/me", "host": ["{{base_url}}"], "path": ["api", "auth", "me"] }
+          },
+          "response": []
         }
-      },
-      "response": []
+      ]
+    },
+    {
+      "name": "Queues (Admin)",
+      "item": [
+        {
+          "name": "Buat Antrean",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nama_antrean\": \"Registrasi Event UniVerse\",\n  \"deskripsi\": \"Antrean untuk pendaftaran ulang peserta event\",\n  \"enabled_fields\": [\"nama\", \"nomor_telepon\"]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/queues", "host": ["{{base_url}}"], "path": ["api", "queues"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.data && json.data.queue) {",
+                  "  pm.collectionVariables.set('queue_id', json.data.queue.id);",
+                  "  pm.collectionVariables.set('qr_token', json.data.queue.qr_code_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "List Antrean Saya",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues?page=1&limit=20", "host": ["{{base_url}}"], "path": ["api", "queues"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] }
+          },
+          "response": []
+        },
+        {
+          "name": "List Antrean (search + filter status) (BARU)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/queues?search=event&status=active&page=1&limit=5",
+              "host": ["{{base_url}}"],
+              "path": ["api", "queues"],
+              "query": [
+                { "key": "search", "value": "event" },
+                { "key": "status", "value": "active" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "5" }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Detail Antrean (BARU)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{queue_id}}", "host": ["{{base_url}}"], "path": ["api", "queues", "{{queue_id}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Daftar Entries Antrean",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/queues/{{queue_id}}/entries",
+              "host": ["{{base_url}}"],
+              "path": ["api", "queues", "{{queue_id}}", "entries"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Daftar Entries (filter waiting)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/queues/{{queue_id}}/entries?status=waiting",
+              "host": ["{{base_url}}"],
+              "path": ["api", "queues", "{{queue_id}}", "entries"],
+              "query": [{ "key": "status", "value": "waiting" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Daftar Entries (pagination) (BARU)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/queues/{{queue_id}}/entries?page=1&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["api", "queues", "{{queue_id}}", "entries"],
+              "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "10" }]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Call Next (BARU)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{queue_id}}/call-next", "host": ["{{base_url}}"], "path": ["api", "queues", "{{queue_id}}", "call-next"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Recall Nomor Aktif (BARU)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/queues/{{queue_id}}/recall", "host": ["{{base_url}}"], "path": ["api", "queues", "{{queue_id}}", "recall"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Antrean PUT (BARU)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nama_antrean\": \"Registrasi Event UniVerse (revisi)\",\n  \"deskripsi\": \"Deskripsi diperbarui\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/queues/{{queue_id}}", "host": ["{{base_url}}"], "path": ["api", "queues", "{{queue_id}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Status Antrean",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"paused\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/queues/{{queue_id}}/status", "host": ["{{base_url}}"], "path": ["api", "queues", "{{queue_id}}", "status"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Antrean (BARU)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/{{queue_id}}", "host": ["{{base_url}}"], "path": ["api", "queues", "{{queue_id}}"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Queues (Publik Guest)",
+      "item": [
+        {
+          "name": "Resolve QR Token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/queues/qr/{{qr_token}}", "host": ["{{base_url}}"], "path": ["api", "queues", "qr", "{{qr_token}}"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Entries",
+      "item": [
+        {
+          "name": "Ambil Tiket (Guest)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"queue_id\": \"{{queue_id}}\",\n  \"data_peserta\": {\n    \"nama\": \"Budi\",\n    \"nomor_telepon\": \"08123456789\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/entries", "host": ["{{base_url}}"], "path": ["api", "entries"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.data && json.data.entry) {",
+                  "  pm.collectionVariables.set('entry_id', json.data.entry.id);",
+                  "  pm.collectionVariables.set('participant_token', json.data.entry.participant_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Cek Tiket by Participant Token",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/entries/{{participant_token}}", "host": ["{{base_url}}"], "path": ["api", "entries", "{{participant_token}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Update Status Tiket (Admin)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"calling\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/entries/{{entry_id}}/status", "host": ["{{base_url}}"], "path": ["api", "entries", "{{entry_id}}", "status"] }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

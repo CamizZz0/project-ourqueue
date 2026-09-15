@@ -184,3 +184,69 @@ export const getEntryByToken = async (req, res, next) => {
   }
 };
 
+/**
+ * Controller untuk Admin Mengubah Status Tiket Peserta
+ * PATCH /api/entries/:id/status (Protected JWT + cek ownership antrean)
+ * Body: { status: 'waiting' | 'calling' | 'completed' | 'skipped' | 'cancelled' }
+ * Contoh alur: waiting -> calling (panggil) -> completed (selesai) / skipped (lewati)
+ */
+export const updateEntryStatus = async (req, res, next) => {
+  try {
+    const userId = req.user.id;
+    const entryId = parseInt(req.params.id, 10);
+    const { status } = req.body;
+
+    if (isNaN(entryId)) {
+      return sendError(res, "ID tiket harus berupa angka yang valid.", null, 400);
+    }
+
+    const allowedStatus = ["waiting", "calling", "completed", "skipped", "cancelled"];
+    if (!status || !allowedStatus.includes(status)) {
+      return sendError(
+        res,
+        `Status tidak valid. Nilai yang diizinkan: ${allowedStatus.join(", ")}.`,
+        null,
+        400
+      );
+    }
+
+    // Cari tiket + pastikan antrean induknya milik user yang login
+    const [existing] = await db
+      .select({
+        entry: queueEntries,
+        owner_id: queues.user_id,
+        queue_id: queues.id,
+        queue_status: queues.status,
+      })
+      .from(queueEntries)
+      .innerJoin(queues, eq(queueEntries.queue_id, queues.id))
+      .where(eq(queueEntries.id, entryId))
+      .limit(1);
+
+    if (!existing) {
+      return sendError(res, "Tiket antrean tidak ditemukan.", null, 404);
+    }
+
+    if (existing.owner_id !== userId) {
+      return sendError(
+        res,
+        "Akses ditolak. Tiket ini bukan bagian dari antrean milik Anda.",
+        null,
+        403
+      );
+    }
+
+    const [updated] = await db
+      .update(queueEntries)
+      .set({ status })
+      .where(eq(queueEntries.id, entryId))
+      .returning();
+
+    return sendSuccess(res, `Status tiket nomor ${updated.nomor_antrean} berhasil diubah menjadi '${status}'.`, {
+      entry: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
