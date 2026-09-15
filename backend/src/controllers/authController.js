@@ -2,45 +2,21 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
 import { db } from "../config/database.js";
+import { env } from "../config/env.js";
 import { users } from "../db/schema.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_jwt_secret_key";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+const JWT_SECRET = env.JWT_SECRET;
+const JWT_EXPIRES_IN = env.JWT_EXPIRES_IN;
 
-/**
- * Controller untuk Registrasi User / Pembuat Antrean Baru
- */
 export const register = async (req, res, next) => {
   try {
     const { nama, email, password } = req.body;
 
-    // 1. Validasi input wajib
-    if (!nama || !email || !password) {
-      return sendError(
-        res,
-        "Nama, email, dan password wajib diisi.",
-        null,
-        400
-      );
-    }
-
-    if (password.length < 6) {
-      return sendError(
-        res,
-        "Password minimal terdiri dari 6 karakter.",
-        null,
-        400
-      );
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-
-    // 2. Cek apakah email sudah terdaftar sebelumnya
     const existingUser = await db
       .select()
       .from(users)
-      .where(eq(users.email, normalizedEmail))
+      .where(eq(users.email, email))
       .limit(1);
 
     if (existingUser.length > 0) {
@@ -52,16 +28,14 @@ export const register = async (req, res, next) => {
       );
     }
 
-    // 3. Hash password menggunakan bcrypt dengan salt rounds = 10
     const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
 
-    // 4. Simpan user baru ke database
     const [newUser] = await db
       .insert(users)
       .values({
         nama: nama.trim(),
-        email: normalizedEmail,
+        email,
         password_hash,
       })
       .returning({
@@ -71,7 +45,6 @@ export const register = async (req, res, next) => {
         created_at: users.created_at,
       });
 
-    // 5. Generate token JWT untuk langsung masuk ke sesi login
     const token = jwt.sign(
       {
         id: newUser.id,
@@ -96,25 +69,14 @@ export const register = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Login User / Pembuat Antrean
- */
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Validasi input
-    if (!email || !password) {
-      return sendError(res, "Email dan password wajib diisi.", null, 400);
-    }
-
-    const normalizedEmail = email.toLowerCase().trim();
-
-    // 2. Cari pengguna berdasarkan email
     const [user] = await db
       .select()
       .from(users)
-      .where(eq(users.email, normalizedEmail))
+      .where(eq(users.email, email))
       .limit(1);
 
     if (!user) {
@@ -126,7 +88,6 @@ export const login = async (req, res, next) => {
       );
     }
 
-    // 3. Bandingkan password plain text dengan password_hash di database
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
       return sendError(
@@ -137,7 +98,6 @@ export const login = async (req, res, next) => {
       );
     }
 
-    // 4. Buat token JWT jika password cocok
     const token = jwt.sign(
       {
         id: user.id,
@@ -161,9 +121,6 @@ export const login = async (req, res, next) => {
   }
 };
 
-/**
- * Controller untuk Mengambil Data Profil Pengguna yang Sedang Login
- */
 export const getMe = async (req, res, next) => {
   try {
     const [currentUser] = await db
@@ -188,4 +145,5 @@ export const getMe = async (req, res, next) => {
     next(error);
   }
 };
+
 

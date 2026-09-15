@@ -6,20 +6,7 @@ import { sendSuccess, sendError } from "../utils/response.js";
 
 export const takeQueueEntry = async (req, res, next) => {
   try {
-    const { queue_id, data_peserta } = req.body;
-
-    if (!queue_id) {
-      return sendError(res, "ID antrean (queue_id) wajib disertakan.", null, 400);
-    }
-
-    if (!data_peserta || typeof data_peserta !== "object" || Object.keys(data_peserta).length === 0) {
-      return sendError(res, "Data peserta (data_peserta) wajib diisi.", null, 400);
-    }
-
-    const numericQueueId = parseInt(queue_id, 10);
-    if (isNaN(numericQueueId)) {
-      return sendError(res, "ID antrean (queue_id) harus berupa angka yang valid.", null, 400);
-    }
+    const { queue_id: numericQueueId, data_peserta } = req.body;
 
     const transactionResult = await db.transaction(async (tx) => {
       const [queue] = await tx
@@ -116,10 +103,6 @@ export const getEntryByToken = async (req, res, next) => {
   try {
     const { token } = req.params;
 
-    if (!token) {
-      return sendError(res, "Participant token wajib disertakan.", null, 400);
-    }
-
     const [entry] = await db
       .select({
         id: queueEntries.id,
@@ -168,22 +151,8 @@ export const getEntryByToken = async (req, res, next) => {
 export const updateEntryStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const entryId = parseInt(req.params.id, 10);
+    const { id: entryId } = req.valid.params;
     const { status } = req.body;
-
-    if (isNaN(entryId)) {
-      return sendError(res, "ID tiket harus berupa angka yang valid.", null, 400);
-    }
-
-    const allowedStatus = ["waiting", "calling", "completed", "skipped", "cancelled"];
-    if (!status || !allowedStatus.includes(status)) {
-      return sendError(
-        res,
-        `Status tidak valid. Nilai yang diizinkan: ${allowedStatus.join(", ")}.`,
-        null,
-        400
-      );
-    }
 
     const [existing] = await db
       .select({
@@ -227,11 +196,7 @@ export const updateEntryStatus = async (req, res, next) => {
 export const deleteEntry = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const entryId = parseInt(req.params.id, 10);
-
-    if (isNaN(entryId)) {
-      return sendError(res, "ID tiket harus berupa angka yang valid.", null, 400);
-    }
+    const { id: entryId } = req.valid.params;
 
     const [existing] = await db
       .select({

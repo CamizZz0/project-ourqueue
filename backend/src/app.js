@@ -1,7 +1,9 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import { sendSuccess, sendError } from "./utils/response.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
+import { env } from "./config/env.js";
 
 import authRoutes from "./routes/authRoutes.js";
 import queueRoutes from "./routes/queueRoutes.js";
@@ -9,11 +11,16 @@ import entryRoutes from "./routes/entryRoutes.js";
 
 const app = express();
 
-// Konfigurasi CORS agar siap dihubungkan dengan Front-End (React/Vite dll)
-const allowedOrigin = process.env.CLIENT_ORIGIN || "http://localhost:5173";
+app.use(helmet());
+
 app.use(
   cors({
-    origin: allowedOrigin,
+    origin: (origin, callback) => {
+      if (!origin || env.CLIENT_ORIGINS.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error(`Origin ${origin} tidak diizinkan oleh CORS.`));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],

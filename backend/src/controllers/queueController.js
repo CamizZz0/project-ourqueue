@@ -8,26 +8,17 @@ export const createQueue = async (req, res, next) => {
   try {
     const { nama_antrean, deskripsi, enabled_fields } = req.body;
 
-    if (!nama_antrean || nama_antrean.trim() === "") {
-      return sendError(res, "Nama antrean wajib diisi.", null, 400);
-    }
-
     const userId = req.user.id;
 
     const qrCodeToken = crypto.randomBytes(8).toString("hex");
-
-    const fields =
-      Array.isArray(enabled_fields) && enabled_fields.length > 0
-        ? enabled_fields
-        : ["nama", "nomor_telepon"];
 
     const [newQueue] = await db
       .insert(queues)
       .values({
         user_id: userId,
-        nama_antrean: nama_antrean.trim(),
-        deskripsi: deskripsi ? deskripsi.trim() : null,
-        enabled_fields: fields,
+        nama_antrean,
+        deskripsi,
+        enabled_fields,
         qr_code_token: qrCodeToken,
         status: "active",
       })
@@ -49,21 +40,8 @@ export const createQueue = async (req, res, next) => {
 export const getMyQueues = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
+    const { page, limit, search, status } = req.valid.query;
     const offset = (page - 1) * limit;
-    const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
-    const { status } = req.query;
-
-    const allowedQueueStatus = ["active", "paused", "closed"];
-    if (status && !allowedQueueStatus.includes(status)) {
-      return sendError(
-        res,
-        `Filter status tidak valid. Nilai yang diizinkan: ${allowedQueueStatus.join(", ")}.`,
-        null,
-        400
-      );
-    }
 
     const conditions = [eq(queues.user_id, userId)];
     if (status) conditions.push(eq(queues.status, status));
@@ -141,10 +119,6 @@ export const getQueueByQrToken = async (req, res, next) => {
   try {
     const { qrToken } = req.params;
 
-    if (!qrToken || qrToken.trim() === "") {
-      return sendError(res, "QR token wajib disertakan.", null, 400);
-    }
-
     const [queue] = await db
       .select({
         id: queues.id,
@@ -155,7 +129,7 @@ export const getQueueByQrToken = async (req, res, next) => {
         created_at: queues.created_at,
       })
       .from(queues)
-      .where(eq(queues.qr_code_token, qrToken.trim()))
+      .where(eq(queues.qr_code_token, qrToken))
       .limit(1);
 
     if (!queue) {
@@ -202,22 +176,8 @@ export const getQueueByQrToken = async (req, res, next) => {
 export const updateQueueStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const queueId = parseInt(req.params.id, 10);
+    const { id: queueId } = req.valid.params;
     const { status } = req.body;
-
-    if (isNaN(queueId)) {
-      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
-    }
-
-    const allowedStatus = ["active", "paused", "closed"];
-    if (!status || !allowedStatus.includes(status)) {
-      return sendError(
-        res,
-        `Status tidak valid. Nilai yang diizinkan: ${allowedStatus.join(", ")}.`,
-        null,
-        400
-      );
-    }
 
     const [existing] = await db
       .select()
@@ -251,15 +211,9 @@ export const updateQueueStatus = async (req, res, next) => {
 export const getQueueEntries = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const queueId = parseInt(req.params.id, 10);
-    const { status } = req.query;
-    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100);
+    const { id: queueId } = req.valid.params;
+    const { status, page, limit } = req.valid.query;
     const offset = (page - 1) * limit;
-
-    if (isNaN(queueId)) {
-      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
-    }
 
     const [queue] = await db
       .select()
@@ -276,19 +230,7 @@ export const getQueueEntries = async (req, res, next) => {
       );
     }
 
-    const allowedEntryStatus = ["waiting", "calling", "completed", "skipped", "cancelled"];
-    let statusFilter = null;
-    if (status) {
-      if (!allowedEntryStatus.includes(status)) {
-        return sendError(
-          res,
-          `Filter status tidak valid. Nilai yang diizinkan: ${allowedEntryStatus.join(", ")}.`,
-          null,
-          400
-        );
-      }
-      statusFilter = status;
-    }
+    const statusFilter = status || null;
 
     const conditions = [eq(queueEntries.queue_id, queueId)];
     if (statusFilter) {
@@ -357,11 +299,7 @@ export const getQueueEntries = async (req, res, next) => {
 export const getQueueDetailById = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const queueId = parseInt(req.params.id, 10);
-
-    if (isNaN(queueId)) {
-      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
-    }
+    const { id: queueId } = req.valid.params;
 
     const [queue] = await db
       .select()
@@ -413,12 +351,8 @@ export const getQueueDetailById = async (req, res, next) => {
 export const updateQueue = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const queueId = parseInt(req.params.id, 10);
+    const { id: queueId } = req.valid.params;
     const { nama_antrean, deskripsi, enabled_fields } = req.body;
-
-    if (isNaN(queueId)) {
-      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
-    }
 
     const [existing] = await db
       .select()
@@ -437,29 +371,14 @@ export const updateQueue = async (req, res, next) => {
 
     const patch = {};
     if (nama_antrean !== undefined) {
-      if (typeof nama_antrean !== "string" || nama_antrean.trim() === "") {
-        return sendError(res, "Nama antrean tidak boleh kosong.", null, 400);
-      }
-      patch.nama_antrean = nama_antrean.trim();
+      patch.nama_antrean = nama_antrean;
     }
     if (deskripsi !== undefined) {
       patch.deskripsi =
-        deskripsi === null ? null : String(deskripsi).trim() || null;
+        typeof deskripsi === "string" ? deskripsi.trim() || null : null;
     }
     if (enabled_fields !== undefined) {
-      if (!Array.isArray(enabled_fields) || enabled_fields.length === 0) {
-        return sendError(
-          res,
-          "enabled_fields harus berupa array non-kosong, misal: [\"nama\", \"nomor_telepon\"].",
-          null,
-          400
-        );
-      }
       patch.enabled_fields = enabled_fields;
-    }
-
-    if (Object.keys(patch).length === 0) {
-      return sendError(res, "Tidak ada field yang diubah.", null, 400);
     }
 
     const [updated] = await db
@@ -479,11 +398,7 @@ export const updateQueue = async (req, res, next) => {
 export const deleteQueue = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const queueId = parseInt(req.params.id, 10);
-
-    if (isNaN(queueId)) {
-      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
-    }
+    const { id: queueId } = req.valid.params;
 
     const [existing] = await db
       .select({ id: queues.id })
@@ -513,11 +428,7 @@ export const deleteQueue = async (req, res, next) => {
 export const callNextEntry = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const queueId = parseInt(req.params.id, 10);
-
-    if (isNaN(queueId)) {
-      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
-    }
+    const { id: queueId } = req.valid.params;
 
     const result = await db.transaction(async (tx) => {
       const [queue] = await tx
@@ -624,16 +535,9 @@ export const callNextEntry = async (req, res, next) => {
 export const recallCurrentEntry = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const queueId = parseInt(req.params.id, 10);
-    const entryId =
-      req.body?.entry_id !== undefined ? parseInt(req.body.entry_id, 10) : null;
-
-    if (isNaN(queueId)) {
-      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
-    }
-    if (req.body?.entry_id !== undefined && isNaN(entryId)) {
-      return sendError(res, "entry_id harus berupa angka yang valid.", null, 400);
-    }
+    const { id: queueId } = req.valid.params;
+    const { entry_id } = req.body;
+    const entryId = entry_id ?? null;
 
     const [queue] = await db
       .select({ id: queues.id, status: queues.status })
@@ -713,11 +617,7 @@ export const recallCurrentEntry = async (req, res, next) => {
 export const resetQueue = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const queueId = parseInt(req.params.id, 10);
-
-    if (isNaN(queueId)) {
-      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
-    }
+    const { id: queueId } = req.valid.params;
 
     const [queue] = await db
       .select({ id: queues.id })
@@ -751,11 +651,7 @@ export const resetQueue = async (req, res, next) => {
 export const regenerateQrToken = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const queueId = parseInt(req.params.id, 10);
-
-    if (isNaN(queueId)) {
-      return sendError(res, "ID antrean harus berupa angka yang valid.", null, 400);
-    }
+    const { id: queueId } = req.valid.params;
 
     const [queue] = await db
       .select({ id: queues.id })

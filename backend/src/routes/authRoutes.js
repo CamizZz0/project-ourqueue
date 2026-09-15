@@ -1,16 +1,16 @@
 import { Router } from "express";
 import { register, login, getMe } from "../controllers/authController.js";
 import { verifyToken } from "../middlewares/authMiddleware.js";
+import { authLimiter } from "../middlewares/rateLimit.js";
+import { validate } from "../middlewares/validate.js";
+import { registerSchema, loginSchema } from "../validators/authValidator.js";
 
 const router = Router();
 
-// Endpoint Registrasi Pengguna Baru
-router.post("/register", register);
+router.post("/register", authLimiter, validate(registerSchema), register);
 
-// Endpoint Login Pengguna
-router.post("/login", login);
+router.post("/login", authLimiter, validate(loginSchema), login);
 
-// Endpoint Cek Profil Pengguna Terautentikasi (dilindungi verifyToken)
 router.get("/me", verifyToken, getMe);
 
 export default router;
