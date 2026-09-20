@@ -1,12 +1,14 @@
-import { pgTable, serial, text, varchar, integer, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, varchar, integer, jsonb, timestamp, boolean } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 
-// 1. Tabel Users (Pemilik / Admin Antrean)
+// 1. Tabel Users (Pemilik / Admin Antrean + Superadmin)
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   nama: varchar("nama", { length: 255 }).notNull(),
   email: varchar("email", { length: 255 }).notNull().unique(),
   password_hash: text("password_hash").notNull(),
+  role: varchar("role", { length: 20 }).default("admin").notNull(),
+  is_active: boolean("is_active").default(true).notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

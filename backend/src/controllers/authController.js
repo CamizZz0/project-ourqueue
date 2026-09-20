@@ -37,11 +37,15 @@ export const register = async (req, res, next) => {
         nama: nama.trim(),
         email,
         password_hash,
+        role: "admin",
+        is_active: true,
       })
       .returning({
         id: users.id,
         nama: users.nama,
         email: users.email,
+        role: users.role,
+        is_active: users.is_active,
         created_at: users.created_at,
       });
 
@@ -50,6 +54,7 @@ export const register = async (req, res, next) => {
         id: newUser.id,
         email: newUser.email,
         nama: newUser.nama,
+        role: newUser.role,
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
@@ -88,6 +93,15 @@ export const login = async (req, res, next) => {
       );
     }
 
+    if (user.is_active === false) {
+      return sendError(
+        res,
+        "Akun Anda telah dinonaktifkan. Hubungi Superadmin untuk aktivasi kembali.",
+        null,
+        403
+      );
+    }
+
     const isPasswordValid = await bcrypt.compare(password, user.password_hash);
     if (!isPasswordValid) {
       return sendError(
@@ -103,6 +117,7 @@ export const login = async (req, res, next) => {
         id: user.id,
         email: user.email,
         nama: user.nama,
+        role: user.role,
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN }
@@ -113,6 +128,8 @@ export const login = async (req, res, next) => {
         id: user.id,
         nama: user.nama,
         email: user.email,
+        role: user.role,
+        is_active: user.is_active,
       },
       token,
     });
@@ -128,6 +145,8 @@ export const getMe = async (req, res, next) => {
         id: users.id,
         nama: users.nama,
         email: users.email,
+        role: users.role,
+        is_active: users.is_active,
         created_at: users.created_at,
       })
       .from(users)

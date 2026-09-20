@@ -8,6 +8,13 @@
       "when": 1789135175549,
       "tag": "0000_flashy_harpoon",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789933705736,
+      "tag": "0001_add_superadmin_role",
+      "breakpoints": true
     }
   ]
 }

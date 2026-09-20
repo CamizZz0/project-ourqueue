@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "b2191b14-bf9c-4dd7-b38e-e13d576e6dc7",
     "name": "API OurQueue",
-    "description": "Koleksi lengkap OurQueue. Urutan test: Register/Login -> Buat Antrean -> Ambil Tiket (x3) -> Detail -> Call Next (x2) -> Daftar Entries -> Update -> Delete.\n\nGunakan variable {{token}}, {{queue_id}}, {{qr_token}}, {{participant_token}} yang terisi otomatis via script di tiap request.",
+    "description": "Koleksi lengkap OurQueue. Urutan test: Register/Login -> Buat Antrean -> Ambil Tiket (x3) -> Detail -> Call Next (x2) -> Daftar Entries -> Update -> Delete -> Superadmin.\n\nGunakan variable {{token}}, {{superadmin_token}}, {{admin_token}}, {{queue_id}}, {{qr_token}}, {{participant_token}}, {{target_admin_id}} yang terisi otomatis via script di tiap request.\n\nSuperadmin default: superadmin@ourqueue.local / Superadmin123! (env SUPERADMIN_*) -> login via folder Superadmin untuk set superadmin_token.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -27,10 +27,13 @@
   "variable": [
     { "key": "base_url", "value": "http://localhost:5001" },
     { "key": "token", "value": "" },
+    { "key": "superadmin_token", "value": "" },
+    { "key": "admin_token", "value": "" },
     { "key": "queue_id", "value": "1" },
     { "key": "qr_token", "value": "" },
     { "key": "entry_id", "value": "1" },
-    { "key": "participant_token", "value": "" }
+    { "key": "participant_token", "value": "" },
+    { "key": "target_admin_id", "value": "" }
   ],
   "item": [
     {
@@ -393,6 +396,253 @@
             "method": "DELETE",
             "header": [],
             "url": { "raw": "{{base_url}}/api/entries/{{entry_id}}", "host": ["{{base_url}}"], "path": ["api", "entries", "{{entry_id}}"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Superadmin (SUPERADMIN ONLY)",
+      "description": "Semua endpoint butuh JWT + role superadmin (verifyToken + requireRole). Admin biasa -> 403, tanpa token -> 401. Login superadmin default via env SUPERADMIN_*. Urutan: Login Superadmin -> Login Admin -> Stats -> List Admins -> Detail -> Deactivate -> Verify 403 -> Reactivate -> List Queues -> Delete safety.",
+      "item": [
+        {
+          "name": "Login Superadmin",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"superadmin@ourqueue.local\",\n  \"password\": \"Superadmin123!\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.data && json.data.token) { pm.collectionVariables.set('superadmin_token', json.data.token); pm.collectionVariables.set('token', json.data.token); }",
+                  "if (json && json.data && json.data.user) { pm.test('role is superadmin', function(){ pm.expect(json.data.user.role).to.eql('superadmin'); }); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Login Admin (simpan admin_token)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"novry@example.com\",\n  \"password\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.data && json.data.token) { pm.collectionVariables.set('admin_token', json.data.token); }",
+                  "if (json && json.data && json.data.user) { pm.collectionVariables.set('target_admin_id', json.data.user.id); }",
+                  "if (json && json.data && json.data.user) { pm.test('role is admin', function(){ pm.expect(json.data.user.role).to.eql('admin'); }); }"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Me Superadmin (cek role)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superadmin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/auth/me", "host": ["{{base_url}}"], "path": ["api", "auth", "me"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Stats",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superadmin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/stats", "host": ["{{base_url}}"], "path": ["api", "superadmin", "stats"] }
+          },
+          "response": []
+        },
+        {
+          "name": "List Admins",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superadmin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/admins?page=1&limit=20", "host": ["{{base_url}}"], "path": ["api", "superadmin", "admins"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] }
+          },
+          "response": []
+        },
+        {
+          "name": "List Admins (search)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superadmin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/admins?search=novry&page=1&limit=5", "host": ["{{base_url}}"], "path": ["api", "superadmin", "admins"], "query": [{ "key": "search", "value": "novry" }, { "key": "page", "value": "1" }, { "key": "limit", "value": "5" }] }
+          },
+          "response": []
+        },
+        {
+          "name": "Detail Admin",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superadmin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/admins/{{target_admin_id}}", "host": ["{{base_url}}"], "path": ["api", "superadmin", "admins", "{{target_admin_id}}"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Deactivate Admin",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superadmin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": false\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/superadmin/admins/{{target_admin_id}}/status", "host": ["{{base_url}}"], "path": ["api", "superadmin", "admins", "{{target_admin_id}}", "status"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Deactivated Admin Cannot Login (expect 403)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"novry@example.com\",\n  \"password\": \"password123\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/auth/login", "host": ["{{base_url}}"], "path": ["api", "auth", "login"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Old Token Rejected (expect 403)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/queues?page=1&limit=5", "host": ["{{base_url}}"], "path": ["api", "queues"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "5" }] }
+          },
+          "response": []
+        },
+        {
+          "name": "Reactivate Admin",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superadmin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": true\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/superadmin/admins/{{target_admin_id}}/status", "host": ["{{base_url}}"], "path": ["api", "superadmin", "admins", "{{target_admin_id}}", "status"] }
+          },
+          "response": []
+        },
+        {
+          "name": "List All Queues (Superadmin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superadmin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/queues?page=1&limit=20", "host": ["{{base_url}}"], "path": ["api", "superadmin", "queues"], "query": [{ "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] }
+          },
+          "response": []
+        },
+        {
+          "name": "List All Queues (filter status active)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superadmin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/queues?status=active&page=1&limit=20", "host": ["{{base_url}}"], "path": ["api", "superadmin", "queues"], "query": [{ "key": "status", "value": "active" }, { "key": "page", "value": "1" }, { "key": "limit", "value": "20" }] }
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Admin cannot GET /superadmin/stats (expect 403)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/stats", "host": ["{{base_url}}"], "path": ["api", "superadmin", "stats"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: No token GET /superadmin/stats (expect 401)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{base_url}}/api/superadmin/stats", "host": ["{{base_url}}"], "path": ["api", "superadmin", "stats"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Admin cannot GET /superadmin/queues (expect 403)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{admin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/queues", "host": ["{{base_url}}"], "path": ["api", "superadmin", "queues"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Invalid is_active type (expect 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{superadmin_token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"is_active\": \"notbool\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": { "raw": "{{base_url}}/api/superadmin/admins/{{target_admin_id}}/status", "host": ["{{base_url}}"], "path": ["api", "superadmin", "admins", "{{target_admin_id}}", "status"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Negatif: Invalid admin ID (expect 404)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superadmin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/admins/9999", "host": ["{{base_url}}"], "path": ["api", "superadmin", "admins", "9999"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Admin (no queues -> 200, with queues -> 400)",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{superadmin_token}}" }],
+            "url": { "raw": "{{base_url}}/api/superadmin/admins/{{target_admin_id}}", "host": ["{{base_url}}"], "path": ["api", "superadmin", "admins", "{{target_admin_id}}"] }
           },
           "response": []
         }

@@ -31,4 +31,7 @@ export const env = {
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean),
+  SUPERADMIN_NAME: optional("SUPERADMIN_NAME", "Superadmin"),
+  SUPERADMIN_EMAIL: optional("SUPERADMIN_EMAIL", "superadmin@ourqueue.local"),
+  SUPERADMIN_PASSWORD: optional("SUPERADMIN_PASSWORD", "Superadmin123!"),
 };

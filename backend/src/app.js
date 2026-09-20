@@ -8,6 +8,7 @@ import { env } from "./config/env.js";
 import authRoutes from "./routes/authRoutes.js";
 import queueRoutes from "./routes/queueRoutes.js";
 import entryRoutes from "./routes/entryRoutes.js";
+import superadminRoutes from "./routes/superadminRoutes.js";
 
 const app = express();
 
@@ -39,6 +40,9 @@ app.use("/api/queues", queueRoutes);
 
 // Rute Publik Pengambilan Tiket Peserta (Guest - Tanpa JWT)
 app.use("/api/entries", entryRoutes);
+
+// Rute Superadmin (Protected + role superadmin)
+app.use("/api/superadmin", superadminRoutes);
 
 // Health Check Endpoint
 app.get("/api/health", (req, res) => {
