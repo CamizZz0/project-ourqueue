@@ -46,7 +46,7 @@ export default function DashboardPage() {
 
   const handleCreated = (newQueue) => {
     setShowCreate(false);
-    setQueues((prev) => [{ ...newQueue, waiting_count: 0, total_count: 0 }, ...prev]);
+    setQueues((prev) => [{ ...newQueue, stats: { total: 0, waiting: 0, calling: 0, completed: 0 } }, ...prev]);
   };
 
   const handleDelete = async (e, queueId) => {
@@ -100,10 +100,13 @@ export default function DashboardPage() {
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {queues.map((q) => (
-            <button
+            <div
+              role="button"
+              tabIndex={0}
               key={q.id}
               onClick={() => setActiveQueueId(q.id)}
-              className="text-left bg-white rounded-2xl border border-mist p-5 hover:border-accent hover:shadow-md transition-all group relative"
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setActiveQueueId(q.id); }}
+              className="text-left bg-white rounded-2xl border border-mist p-5 hover:border-accent hover:shadow-md transition-all group relative cursor-pointer"
             >
               <div className="flex items-start justify-between mb-3">
                 <span className={`text-xs font-semibold px-2 py-1 rounded-full ${STATUS_BADGE[q.status]}`}>
@@ -124,14 +127,14 @@ export default function DashboardPage() {
               <div className="flex items-center gap-4 text-sm text-ink-soft pt-3 border-t border-mist">
                 <span className="flex items-center gap-1.5">
                   <Users size={14} />
-                  {q.waiting_count} menunggu
+                  {q.stats?.waiting ?? 0} menunggu
                 </span>
                 <span className="flex items-center gap-1.5">
                   <QrCode size={14} />
-                  {q.total_count} total
+                  {q.stats?.total ?? 0} total
                 </span>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}

@@ -16,7 +16,13 @@ export default function CreateQueueModal({ onClose, onCreated }) {
   const [error, setError] = useState("");
 
   const toggleField = (key) => {
-    setFields((prev) => (prev.includes(key) ? prev.filter((f) => f !== key) : [...prev, key]));
+    setFields((prev) => {
+      if (prev.includes(key)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((f) => f !== key);
+      }
+      return [...prev, key];
+    });
   };
 
   const handleSubmit = async (e) => {

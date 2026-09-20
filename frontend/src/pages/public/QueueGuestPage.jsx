@@ -14,6 +14,7 @@ const STATUS_COPY = {
   calling: { title: "Giliran kamu sekarang!", cls: "text-ink", icon: AlertCircle },
   completed: { title: "Sudah selesai dilayani", cls: "text-ink-soft", icon: CheckCircle2 },
   skipped: { title: "Dilewati", cls: "text-ink-soft", icon: SkipForward },
+  cancelled: { title: "Dibatalkan", cls: "text-ink-soft", icon: SkipForward },
 };
 
 export default function QueueGuestPage() {
@@ -30,7 +31,7 @@ export default function QueueGuestPage() {
 
   useEffect(() => {
     api
-      .get(`/queues/public/${qrToken}`)
+      .get(`/queues/qr/${qrToken}`)
       .then((res) => setQueue(res.data.queue))
       .catch((err) => setError(err.message || "Antrean tidak ditemukan."))
       .finally(() => setLoading(false));
@@ -49,7 +50,7 @@ export default function QueueGuestPage() {
       const res = await api.get(`/entries/${participantToken}`);
       setTicket(res.data.tiket);
       setAheadCount(res.data.sisa_antrean_di_depan);
-    } catch (err) {
+    } catch {
       localStorage.removeItem(storageKey);
     }
   }, [storageKey]);
@@ -134,7 +135,7 @@ export default function QueueGuestPage() {
   }
 
   const enabledFields = Array.isArray(queue?.enabled_fields) ? queue.enabled_fields : [];
-  const isClosed = queue?.status !== "active";
+  const isNotAcceptingEntries = queue?.status !== "active";
 
   return (
     <div className="max-w-sm mx-auto px-4 py-14">
@@ -146,9 +147,13 @@ export default function QueueGuestPage() {
         {queue?.deskripsi && <p className="text-sm text-ink-soft mt-1">{queue.deskripsi}</p>}
       </div>
 
-      {isClosed ? (
+      {isNotAcceptingEntries ? (
         <div className="bg-white rounded-2xl border border-mist p-6 text-center">
-          <p className="text-ink-soft text-sm">Antrean ini sedang tidak menerima pendaftaran baru.</p>
+          <p className="text-ink-soft text-sm">
+            {queue?.status === "paused"
+            ? "Antrean sedang dijeda sementara. Coba scan lagi beberapa saat lagi."
+            : "Antrean ini sudah ditutup dan tidak menerima pendaftaran baru."}
+          </p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-mist p-6 space-y-4 shadow-sm">
