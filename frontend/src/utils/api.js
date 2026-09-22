@@ -29,26 +29,43 @@ api.interceptors.response.use(
     return response.data; // Langsung mengembalikan { success, message, data }
   },
   (error) => {
+    const status = error.response?.status;
+    const serverMessage = error.response?.data?.message || "";
+
     // Jika token tidak valid / expired (401), bersihkan token
-    if (error.response && error.response.status === 401) {
+    if (status === 401) {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
-      // Opsional: redirect ke login jika bukan di halaman auth
       if (!window.location.pathname.startsWith("/login")) {
         window.location.href = "/login";
       }
     }
 
-    const errorMessage =
-      error.response?.data?.message || error.message || "Terjadi kesalahan pada server.";
+    // 403: bisa berarti akun dinonaktifkan (paksa logout), atau cuma kurang role (biarkan UI yang handle)
+    if (status === 403) {
+      if (serverMessage.toLowerCase().includes("dinonaktifkan")) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        if (!window.location.pathname.startsWith("/login")) {
+          window.location.href = "/login";
+        }
+      } else if (serverMessage.toLowerCase().includes("membutuhkan role")) {
+        return Promise.reject({
+          message: serverMessage,
+          statusCode: 403,
+          raw: error.response?.data,
+        });
+      }
+    }
+
+    const errorMessage = serverMessage || error.message || "Terjadi kesalahan pada server.";
 
     return Promise.reject({
       message: errorMessage,
-      statusCode: error.response?.status || 500,
+      statusCode: status || 500,
       raw: error.response?.data,
     });
   }
 );
 
 export default api;
-

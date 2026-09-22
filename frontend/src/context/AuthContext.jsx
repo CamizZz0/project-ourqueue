@@ -1,13 +1,44 @@
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
 import api from "../utils/api";
 
 const AuthContext = createContext(null);
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
+function safeParseUser() {
+  try {
     const stored = localStorage.getItem("user");
     return stored ? JSON.parse(stored) : null;
-  });
+  } catch {
+    localStorage.removeItem("user");
+    return null;
+  }
+}
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(safeParseUser);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // Validasi token ke backend saat aplikasi pertama kali dibuka.
+  // Sekaligus sinkronisasi role/is_active terbaru (misal kalau baru saja dinonaktifkan superadmin).
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      setCheckingAuth(false);
+      return;
+    }
+    api
+      .get("/auth/me")
+      .then((res) => {
+        const freshUser = res.data.user;
+        localStorage.setItem("user", JSON.stringify(freshUser));
+        setUser(freshUser);
+      })
+      .catch(() => {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        setUser(null);
+      })
+      .finally(() => setCheckingAuth(false));
+  }, []);
 
   const login = useCallback(async (email, password) => {
     const res = await api.post("/auth/login", { email, password });
@@ -35,8 +66,25 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  const role = user?.role;
+  const isAdmin = role === "admin";
+  const isSuperadmin = role === "superadmin";
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, isAuthenticated: !!user }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        role,
+        isAdmin,
+        isSuperadmin,
+        is_active: user?.is_active,
+        login,
+        register,
+        logout,
+        isAuthenticated: !!user,
+        checkingAuth,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

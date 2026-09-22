@@ -1,10 +1,10 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ListOrdered, LogOut } from "lucide-react";
+import { ListOrdered, LogOut, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 
 export default function Navbar() {
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout, isAuthenticated, isSuperadmin } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -24,10 +24,28 @@ export default function Navbar() {
       <nav className="flex items-center gap-6 text-sm font-medium text-ink-soft">
         {isAuthenticated ? (
           <>
-            <Link to="/dashboard" className="hover:text-accent transition-colors">
-              Dashboard
-            </Link>
-            <span className="hidden sm:inline text-ink-soft/70">Hai, {user?.nama?.split(" ")[0]}</span>
+            {!isSuperadmin && (
+              <Link to="/dashboard" className="hover:text-accent transition-colors">
+                Dashboard
+              </Link>
+            )}
+            {isSuperadmin && (
+              <Link
+                to="/superadmin"
+                className="flex items-center gap-1.5 text-sm font-semibold text-ink hover:text-accent transition-colors"
+              >
+                <ShieldCheck size={16} />
+                Superadmin
+              </Link>
+            )}
+            <span className="hidden sm:inline items-center gap-2 text-ink-soft/70">
+              Hai, {user?.nama?.split(" ")[0]}
+              {user?.role && (
+                <span className="ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-ink text-white capitalize">
+                  {user.role}
+                </span>
+              )}
+            </span>
             <button
               onClick={handleLogout}
               className="flex items-center gap-1.5 rounded-lg border border-mist-dark px-3 py-1.5 text-ink hover:border-ink hover:text-ink transition-colors"

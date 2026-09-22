@@ -19,7 +19,7 @@ const STATUS_LABEL_ID = {
 };
 
 export default function DashboardPage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isSuperadmin, checkingAuth } = useAuth();
   const [queues, setQueues] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -40,13 +40,29 @@ export default function DashboardPage() {
     if (isAuthenticated) fetchQueues();
   }, [isAuthenticated, fetchQueues]);
 
+  if (checkingAuth) {
+    return (
+      <div className="flex justify-center py-20">
+        <Loader2 className="animate-spin text-accent" size={28} />
+      </div>
+    );
+  }
+
+  // Superadmin gak punya antrean sendiri — tugasnya cuma ngawasin, bukan bikin antrean.
+  if (isSuperadmin) {
+    return <Navigate to="/superadmin" replace />;
+  }
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
   const handleCreated = (newQueue) => {
     setShowCreate(false);
-    setQueues((prev) => [{ ...newQueue, stats: { total: 0, waiting: 0, calling: 0, completed: 0 } }, ...prev]);
+    setQueues((prev) => [
+      { ...newQueue, stats: { total: 0, waiting: 0, calling: 0, completed: 0 } },
+      ...prev,
+    ]);
   };
 
   const handleDelete = async (e, queueId) => {
@@ -101,11 +117,13 @@ export default function DashboardPage() {
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {queues.map((q) => (
             <div
+              key={q.id}
               role="button"
               tabIndex={0}
-              key={q.id}
               onClick={() => setActiveQueueId(q.id)}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setActiveQueueId(q.id); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") setActiveQueueId(q.id);
+              }}
               className="text-left bg-white rounded-2xl border border-mist p-5 hover:border-accent hover:shadow-md transition-all group relative cursor-pointer"
             >
               <div className="flex items-start justify-between mb-3">
@@ -143,7 +161,10 @@ export default function DashboardPage() {
       {activeQueueId && (
         <QueueDetailPanel
           queueId={activeQueueId}
-          onClose={() => setActiveQueueId(null)}
+          onClose={() => {
+            setActiveQueueId(null);
+            fetchQueues();
+          }}
           onQueueChanged={fetchQueues}
         />
       )}
