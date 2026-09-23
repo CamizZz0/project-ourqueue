@@ -3,16 +3,28 @@ import { Link, Navigate, useLocation } from "react-router-dom";
 import { QrCode, ListOrdered, Users2, ArrowRight } from "lucide-react";
 import { getLastTicket, hasAdminSession } from "../utils/lastTicket";
 
+function isStandaloneApp() {
+  if (typeof window === "undefined") return false;
+  return (
+    window.navigator.standalone === true ||
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia("(display-mode: fullscreen)").matches
+  );
+}
+
 export default function HomePage() {
   const location = useLocation();
-  // Peserta yang memasang app ke Home Screen bisa mendarat di sini: di Android
-  // start_url diambil dari manifest (ikon yang dipasang sebelum perubahan masih "/"),
-  // di iOS storage app-nya terpisah. Kalau perangkat ini punya tiket terakhir dan
-  // tidak ada sesi admin, arahkan ke tiketnya — jangan ke dashboard.
-  // Redirect ini hanya berlaku untuk route home, bukan untuk route peserta valid
-  // seperti /q/:token yang sudah membawa token di query string (?t=...).
+  // Redirect ke tiket terakhir hanya dipakai untuk app yang dipasang ke Home Screen / PWA.
+  // Di browser biasa, tombol "Buat antrean pertamamu" tetap bisa diakses dan tidak
+  // akan diteruskan ke tiket lama.
   const lastTicket = getLastTicket();
-  if (location.pathname === "/" && lastTicket && !hasAdminSession()) {
+  const shouldRedirectToTicket =
+    location.pathname === "/" &&
+    !!lastTicket &&
+    !hasAdminSession() &&
+    isStandaloneApp();
+
+  if (shouldRedirectToTicket) {
     return <Navigate to={lastTicket} replace />;
   }
 
