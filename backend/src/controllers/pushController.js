@@ -1,0 +1,44 @@
+import { eq } from "drizzle-orm";
+import { db } from "../config/database.js";
+import { pushSubscriptions, queueEntries } from "../db/schema.js";
+import { sendSuccess, sendError } from "../utils/response.js";
+import { env } from "../config/env.js";
+
+export const getVapidPublic = async (req, res) => {
+  return sendSuccess(res, "VAPID public key", { publicKey: env.VAPID_PUBLIC_KEY });
+};
+
+export const subscribePush = async (req, res, next) => {
+  try {
+    const { participant_token, subscription } = req.body;
+    if (!participant_token || !subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+      return sendError(res, "participant_token dan subscription{endpoint,keys{p256dh,auth}} wajib.", null, 400);
+    }
+
+    const [entry] = await db.select({ id: queueEntries.id }).from(queueEntries).where(eq(queueEntries.participant_token, participant_token)).limit(1);
+    if (!entry) return sendError(res, "participant_token tidak ditemukan.", null, 404);
+
+    const p256dh = subscription.keys.p256dh;
+    const auth = subscription.keys.auth;
+    const endpoint = subscription.endpoint;
+
+    const existing = await db.select().from(pushSubscriptions).where(eq(pushSubscriptions.participant_token, participant_token)).limit(1);
+
+    if (existing.length > 0) {
+      const [updated] = await db.update(pushSubscriptions).set({ endpoint, p256dh, auth, updated_at: new Date() }).where(eq(pushSubscriptions.participant_token, participant_token)).returning();
+      return sendSuccess(res, "Subscription diperbarui.", { subscription: updated });
+    }
+
+    const [created] = await db.insert(pushSubscriptions).values({ participant_token, endpoint, p256dh, auth }).returning();
+    return sendSuccess(res, "Berhasil subscribe notifikasi.", { subscription: created }, 201);
+  } catch (e) { next(e); }
+};
+
+export const unsubscribePush = async (req, res, next) => {
+  try {
+    const { participant_token } = req.body;
+    if (!participant_token) return sendError(res, "participant_token wajib.", null, 400);
+    await db.delete(pushSubscriptions).where(eq(pushSubscriptions.participant_token, participant_token));
+    return sendSuccess(res, "Berhasil unsubscribe.");
+  } catch (e) { next(e); }
+};

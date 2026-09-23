@@ -34,4 +34,7 @@ export const env = {
   SUPERADMIN_NAME: optional("SUPERADMIN_NAME", "Superadmin"),
   SUPERADMIN_EMAIL: optional("SUPERADMIN_EMAIL", "superadmin@ourqueue.local"),
   SUPERADMIN_PASSWORD: optional("SUPERADMIN_PASSWORD", "Superadmin123!"),
+  VAPID_PUBLIC_KEY: optional("VAPID_PUBLIC_KEY", "BNxCkMWM6oyxVmqpNXop0MEBwiF9DjfwY8mJkqHfMdslAFjrF5sJr9SoZzvTzB3F6CMj_bG21kUHFj-UMmfHzmw"),
+  VAPID_PRIVATE_KEY: optional("VAPID_PRIVATE_KEY", "tktWUS9tZJXL8IvljUGqKpoDKOfWPGWv1P8OQ3V9dm0"),
+  VAPID_SUBJECT: optional("VAPID_SUBJECT", "mailto:superadmin@ourqueue.local"),
 };

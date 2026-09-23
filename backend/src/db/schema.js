@@ -45,6 +45,20 @@ export const queueEntries = pgTable("queue_entries", {
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// 4. Tabel Push Subscriptions (Web Push untuk peserta)
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  participant_token: varchar("participant_token", { length: 255 })
+    .references(() => queueEntries.participant_token, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Relasi Drizzle ORM antar tabel
 export const usersRelations = relations(users, ({ many }) => ({
   queues: many(queues),

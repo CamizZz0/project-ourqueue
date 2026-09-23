@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { Loader2, Ticket, Users, AlertCircle, CheckCircle2, SkipForward } from "lucide-react";
+import { Loader2, Ticket, Users, AlertCircle, CheckCircle2, SkipForward, Bell } from "lucide-react";
 import api from "../../utils/api";
+import { registerSW, subscribePush, isPushSupported } from "../../utils/push";
 
 const FIELD_LABELS = {
   nama: "Nama",
@@ -28,6 +29,8 @@ export default function QueueGuestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [ticket, setTicket] = useState(null);
   const [aheadCount, setAheadCount] = useState(0);
+  const [pushState, setPushState] = useState("idle"); // idle | granted | denied | unsupported
+  const prevStatusRef = useRef(null);
 
   useEffect(() => {
     api
@@ -38,9 +41,22 @@ export default function QueueGuestPage() {
   }, [qrToken]);
 
   useEffect(() => {
+    registerSW();
+    if (!isPushSupported()) setPushState("unsupported");
+    else if (Notification.permission === "granted") setPushState("granted");
+    else if (Notification.permission === "denied") setPushState("denied");
+  }, []);
+
+  useEffect(() => {
     const savedToken = localStorage.getItem(storageKey);
     if (savedToken) {
       fetchTicket(savedToken);
+      // re-subscribe di background agar push tetap aktif meski pernah tutup tab
+      if (isPushSupported() && Notification.permission === "granted") {
+        subscribePush(savedToken).then((r) => {
+          if (r.ok) setPushState("granted");
+        });
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qrToken]);
@@ -48,12 +64,18 @@ export default function QueueGuestPage() {
   const fetchTicket = useCallback(async (participantToken) => {
     try {
       const res = await api.get(`/entries/${participantToken}`);
-      setTicket(res.data.tiket);
+      const newTicket = res.data.tiket;
+      // deteksi transisi waiting -> calling untuk notif in-app fallback (tab terbuka)
+      if (prevStatusRef.current === "waiting" && newTicket.status === "calling" && Notification.permission === "granted" && document.hidden === false) {
+        try { new Notification(`Giliran kamu! #${newTicket.nomor_antrean}`, { body: `${queue?.nama_antrean || "Antrean"} — silakan menuju loket`, icon: "/favicon.svg" }); } catch {}
+      }
+      prevStatusRef.current = newTicket.status;
+      setTicket(newTicket);
       setAheadCount(res.data.sisa_antrean_di_depan);
     } catch {
       localStorage.removeItem(storageKey);
     }
-  }, [storageKey]);
+  }, [storageKey, queue?.nama_antrean]);
 
   useEffect(() => {
     if (!ticket || ticket.status === "completed" || ticket.status === "skipped") return;
@@ -65,6 +87,14 @@ export default function QueueGuestPage() {
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleEnablePush = async () => {
+    if (!ticket) return;
+    const r = await subscribePush(ticket.participant_token);
+    if (r.ok) setPushState("granted");
+    else if (r.reason === "denied") setPushState("denied");
+    else setPushState(r.reason || "idle");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -74,9 +104,18 @@ export default function QueueGuestPage() {
         queue_id: queue.id,
         data_peserta: formData,
       });
-      localStorage.setItem(storageKey, res.data.entry.participant_token);
+      const token = res.data.entry.participant_token;
+      localStorage.setItem(storageKey, token);
       setTicket(res.data.entry);
+      prevStatusRef.current = res.data.entry.status;
       setAheadCount(res.data.entry.nomor_antrean - 1);
+      // langsung coba subscribe push di background (tidak blokir UX)
+      if (isPushSupported()) {
+        subscribePush(token).then((r) => {
+          if (r.ok) setPushState("granted");
+          else if (Notification.permission === "denied") setPushState("denied");
+        });
+      }
     } catch (err) {
       setError(err.message || "Gagal mengambil nomor antrean.");
     } finally {
@@ -127,6 +166,23 @@ export default function QueueGuestPage() {
             )}
           </div>
         </div>
+        {ticket.status === "waiting" && pushState !== "granted" && pushState !== "unsupported" && (
+          <div className="mt-4 rounded-xl border border-mist bg-white p-3 flex items-center justify-between gap-3">
+            <div className="text-left">
+              <p className="text-sm font-semibold text-ink flex items-center gap-1.5"><Bell size={14} /> Aktifkan notifikasi</p>
+              <p className="text-xs text-ink-soft">Biar tetap dipanggil meski tab tertutup.</p>
+            </div>
+            <button onClick={handleEnablePush} className="shrink-0 rounded-lg bg-accent text-white text-sm font-semibold px-3 py-1.5 hover:bg-accent-dark">
+              Aktifkan
+            </button>
+          </div>
+        )}
+        {pushState === "granted" && ticket.status === "waiting" && (
+          <p className="text-center text-xs text-ink-soft mt-3 flex items-center justify-center gap-1"><Bell size={12} /> Notifikasi aktif — kamu akan dipanggil meski tab tertutup.</p>
+        )}
+        {pushState === "denied" && (
+          <p className="text-center text-xs text-ink-soft mt-3">Notifikasi diblokir. Aktifkan di pengaturan browser.</p>
+        )}
         <p className="text-center text-xs text-ink-soft mt-4">
           Halaman ini otomatis diperbarui. Boleh ditutup dan dibuka lagi kapan saja.
         </p>

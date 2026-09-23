@@ -3,6 +3,7 @@ import { eq, sql, and, lt } from "drizzle-orm";
 import { db } from "../config/database.js";
 import { queues, queueEntries } from "../db/schema.js";
 import { sendSuccess, sendError } from "../utils/response.js";
+import { notifyCalling } from "../services/pushService.js";
 
 export const takeQueueEntry = async (req, res, next) => {
   try {
@@ -184,6 +185,10 @@ export const updateEntryStatus = async (req, res, next) => {
       .set({ status })
       .where(eq(queueEntries.id, entryId))
       .returning();
+
+    if (status === "calling") {
+      try { await notifyCalling(updated.participant_token); } catch (e) { console.error("[updateEntryStatus] push error", e.message); }
+    }
 
     return sendSuccess(res, `Status tiket nomor ${updated.nomor_antrean} berhasil diubah menjadi '${status}'.`, {
       entry: updated,

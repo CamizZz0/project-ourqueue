@@ -9,6 +9,7 @@ import authRoutes from "./routes/authRoutes.js";
 import queueRoutes from "./routes/queueRoutes.js";
 import entryRoutes from "./routes/entryRoutes.js";
 import superadminRoutes from "./routes/superadminRoutes.js";
+import pushRoutes from "./routes/pushRoutes.js";
 
 const app = express();
 
@@ -43,6 +44,9 @@ app.use("/api/entries", entryRoutes);
 
 // Rute Superadmin (Protected + role superadmin)
 app.use("/api/superadmin", superadminRoutes);
+
+// Rute Push Notifikasi (peserta - participant_token auth)
+app.use("/api/push", pushRoutes);
 
 // Health Check Endpoint
 app.get("/api/health", (req, res) => {

@@ -3,6 +3,7 @@ import { eq, and, desc, asc, sql, ilike, or } from "drizzle-orm";
 import { db } from "../config/database.js";
 import { queues, queueEntries } from "../db/schema.js";
 import { sendSuccess, sendError } from "../utils/response.js";
+import { notifyCalling } from "../services/pushService.js";
 
 export const createQueue = async (req, res, next) => {
   try {
@@ -522,6 +523,9 @@ export const callNextEntry = async (req, res, next) => {
       return sendError(res, result.error, result.completed ? { completed: result.completed } : null, result.statusCode || 400);
     }
 
+    // Fire-and-forget push notifikasi calling (jangan blokir response)
+    try { await notifyCalling(result.data.called.participant_token); } catch (e) { console.error("[callNextEntry] push error", e.message); }
+
     return sendSuccess(
       res,
       `Nomor antrean ${result.data.called.nomor_antrean} kini dipanggil.`,
@@ -603,6 +607,8 @@ export const recallCurrentEntry = async (req, res, next) => {
       }
       recalled = current;
     }
+
+    try { await notifyCalling(recalled.participant_token); } catch (e) { console.error("[recall] push error", e.message); }
 
     return sendSuccess(
       res,

@@ -1,0 +1,12 @@
+{
+  "name": "OurQueue",
+  "short_name": "OurQueue",
+  "description": "Antrean digital yang tinggal di-scan.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fdfbf6",
+  "theme_color": "#ffbe00",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
