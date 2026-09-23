@@ -328,7 +328,7 @@ export default function QueueGuestPage() {
         </div>
         {ticket.status === "waiting" && pushState === "unsupported" && (
           <p className="text-center text-xs text-ink-soft mt-3">
-            Notifikasi tidak tersedia di browser ini. Buka halaman ini lewat Safari/Chrome (lalu &quot;Tambah ke Layar Utama&quot;) supaya tetap dipanggil meski tab tertutup.
+            Notifikasi otomatis tidak didukung di browser ini — halaman ini tetap diperbarui sendiri.
           </p>
         )}
         {ticket.status === "waiting" && pushState === "checking" && (
