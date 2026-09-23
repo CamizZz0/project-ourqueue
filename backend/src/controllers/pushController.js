@@ -44,8 +44,12 @@ export const sendTestPush = async (req, res, next) => {
     if (!participant_token) return sendError(res, "participant_token wajib.", null, 400);
 
     const [entry] = await db
-      .select({ id: queueEntries.id })
+      .select({
+        id: queueEntries.id,
+        qr_code_token: queues.qr_code_token,
+      })
       .from(queueEntries)
+      .innerJoin(queues, eq(queueEntries.queue_id, queues.id))
       .where(eq(queueEntries.participant_token, participant_token))
       .limit(1);
     if (!entry) return sendError(res, "participant_token tidak ditemukan.", null, 404);
@@ -56,7 +60,9 @@ export const sendTestPush = async (req, res, next) => {
       icon: "/favicon.svg",
       badge: "/favicon.svg",
       tag: "ourqueue-test",
-      data: { url: "/", type: "test" },
+      // Ke tiket peserta (bukan "/" yang membuka home) + bawa ?t= agar app
+      // Home Screen dengan storage terpisah tetap mendarat di tiket yang benar.
+      data: { url: `/q/${entry.qr_code_token}?t=${participant_token}`, type: "test" },
       type: "test",
     });
 

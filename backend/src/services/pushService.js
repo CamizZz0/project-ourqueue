@@ -50,7 +50,9 @@ export async function notifyCalling(participant_token) {
     icon: "/favicon.svg",
     badge: "/favicon.svg",
     tag: `calling-${participant_token}`,
-    data: { url: `/q/${entry.qr_code_token}`, nomor_antrean: entry.nomor_antrean, queue_id: entry.queue_id, participant_token },
+    // ?t= wajib: app Home Screen / tab baru punya storage terpisah, tanpa token ini
+    // halaman tiket tidak bisa memuat tiket peserta yang benar.
+    data: { url: `/q/${entry.qr_code_token}?t=${participant_token}`, nomor_antrean: entry.nomor_antrean, queue_id: entry.queue_id, participant_token },
     type: "calling",
   };
 

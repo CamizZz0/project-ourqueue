@@ -64,15 +64,57 @@ self.addEventListener("pushsubscriptionchange", (event) => {
   );
 });
 
+// Cari tab yang URL-nya PERSIS sama dengan target (pathname+search). Matching
+// lama pakai `w.url.includes(url)` — berbahaya: URL "/" cocok dengan SEMUA tab,
+// jadi mengetuk notifikasi bisa memfokuskan halaman depan (home) alih-alih tiket.
+function sameUrl(clientUrl, target) {
+  try {
+    const a = new URL(clientUrl);
+    const b = new URL(target, self.location.origin);
+    return a.pathname === b.pathname && a.search === b.search;
+  } catch {
+    return false;
+  }
+}
+
+// Pakai URL absolut: beberapa WebView/iOS tidak menangani path relatif dengan benar.
+function toAbsoluteUrl(url) {
+  try {
+    return new URL(url, self.location.origin).href;
+  } catch {
+    return url;
+  }
+}
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = event.notification.data?.url || "/";
+  const target = toAbsoluteUrl(url);
   event.waitUntil(
-    clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+    (async () => {
+      const wins = await clients.matchAll({ type: "window", includeUncontrolled: true });
+      // 1) Tab yang persis membuka tiket ini → fokuskan.
       for (const w of wins) {
-        if (w.url.includes(url) && "focus" in w) return w.focus();
+        if (sameUrl(w.url, target) && "focus" in w) return w.focus();
       }
-      if (clients.openWindow) return clients.openWindow(url);
-    })
+      // 2) Tab tiket yang sama tapi query-nya beda (mis. tanpa ?t=) →
+      //    arahkan ke URL lengkap, jangan cuma difokuskan setengah jalan.
+      try {
+        const targetPath = new URL(target).pathname;
+        for (const w of wins) {
+          try {
+            const u = new URL(w.url);
+            if (u.pathname === targetPath) {
+              if ("navigate" in w) return w.navigate(target);
+              // Fallback navigate tidak tersedia → fokuskan saja tab tersebut;
+              // halaman tiket akan menyesuaikan diri dari token tersimpan.
+              return w.focus();
+            }
+          } catch {}
+        }
+      } catch {}
+      // 3) Tidak ada tab yang cocok → buka tab baru.
+      if (clients.openWindow) return clients.openWindow(target);
+    })()
   );
 });
