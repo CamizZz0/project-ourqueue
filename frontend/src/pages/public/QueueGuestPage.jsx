@@ -21,6 +21,12 @@ const STATUS_COPY = {
 // Status akhir: tiket tidak akan berubah lagi, jadi polling boleh dihentikan.
 const FINAL_STATUSES = ["completed", "skipped", "cancelled"];
 
+const POLL_INTERVAL_MS = 4000;
+const MAX_POLL_INTERVAL_MS = 30000;
+const FETCH_ATTEMPTS = 3;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export default function QueueGuestPage() {
   const { qrToken } = useParams();
   const storageKey = `ourqueue_ticket_${qrToken}`;
@@ -38,6 +44,8 @@ export default function QueueGuestPage() {
   // supaya user tidak mengambil nomor baru tanpa sengaja.
   const [hasSavedTicket, setHasSavedTicket] = useState(false);
   const [ticketError, setTicketError] = useState("");
+  // Dipakai untuk memperlambat polling kalau server sedang bermasalah.
+  const fetchFailuresRef = useRef(0);
   // idle | checking | granted | denied | unsupported | sync-failed
   const [pushState, setPushState] = useState("idle");
   const prevStatusRef = useRef(null);
@@ -113,57 +121,86 @@ export default function QueueGuestPage() {
   };
 
   const fetchTicket = useCallback(async (participantToken) => {
-    try {
-      const res = await api.get(`/entries/${participantToken}`);
-      const newTicket = res.data.tiket;
-      // deteksi transisi waiting -> calling untuk notif in-app fallback (tab terbuka)
-      if (prevStatusRef.current === "waiting" && newTicket.status === "calling" && Notification.permission === "granted" && document.hidden === false) {
-        try { new Notification(`Giliran kamu! #${newTicket.nomor_antrean}`, { body: `${queue?.nama_antrean || "Antrean"} — silakan menuju loket`, icon: "/favicon.svg" }); } catch {}
-      }
-      prevStatusRef.current = newTicket.status;
-      setTicket(newTicket);
-      setAheadCount(res.data.sisa_antrean_di_depan);
-      setTicketError("");
-      // simpan sebagai cache supaya refresh menampilkan tiket ini lagi, bukan form
+    // Serverless (cold start) + Neon kadang membuat satu request gagal begitu saja,
+    // jadi coba beberapa kali dulu sebelum menampilkan error ke user.
+    let lastError = null;
+
+    for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
       try {
-        localStorage.setItem(
-          cachedTicketKey,
-          JSON.stringify({ tiket: newTicket, sisa_antrean_di_depan: res.data.sisa_antrean_di_depan })
-        );
-      } catch {}
-    } catch (err) {
-      // Hanya hapus jejak tiket kalau tiketnya memang sudah tidak ada (dihapus admin
-      // atau antrean direset). Error lain (jaringan, 429, 5xx) TIDAK boleh menghapus
-      // tiket: user jadi dilempar ke form dan mengambil nomor baru (duplikat).
-      if (err?.statusCode === 404) {
-        localStorage.removeItem(storageKey);
-        localStorage.removeItem(cachedTicketKey);
-        setHasSavedTicket(false);
-        setTicket(null);
-        prevStatusRef.current = null;
-      } else {
-        setTicketError(err?.message || "Gagal memperbarui status tiket.");
+        const res = await api.get(`/entries/${participantToken}`);
+        const newTicket = res.data.tiket;
+        // deteksi transisi waiting -> calling untuk notif in-app fallback (tab terbuka)
+        if (prevStatusRef.current === "waiting" && newTicket.status === "calling" && Notification.permission === "granted" && document.hidden === false) {
+          try { new Notification(`Giliran kamu! #${newTicket.nomor_antrean}`, { body: `${queue?.nama_antrean || "Antrean"} — silakan menuju loket`, icon: "/favicon.svg" }); } catch {}
+        }
+        prevStatusRef.current = newTicket.status;
+        setTicket(newTicket);
+        setAheadCount(res.data.sisa_antrean_di_depan);
+        setTicketError("");
+        fetchFailuresRef.current = 0;
+        // simpan sebagai cache supaya refresh menampilkan tiket ini lagi, bukan form
+        try {
+          localStorage.setItem(
+            cachedTicketKey,
+            JSON.stringify({ tiket: newTicket, sisa_antrean_di_depan: res.data.sisa_antrean_di_depan })
+          );
+        } catch {}
+        return;
+      } catch (err) {
+        lastError = err;
+        // 404 = tiket memang sudah tidak ada, percuma diulang
+        if (err?.statusCode === 404) break;
+        if (attempt < FETCH_ATTEMPTS) await sleep(1200);
       }
     }
+
+    console.warn("[tiket] gagal memuat status tiket:", lastError?.statusCode, lastError?.message);
+
+    if (lastError?.statusCode === 404) {
+      // Tiket benar-benar sudah tidak ada (dihapus admin / antrean direset).
+      // Error lain (jaringan, 429, 5xx) TIDAK boleh menghapus tiket: user jadi
+      // dilempar ke form dan mengambil nomor baru (duplikat).
+      localStorage.removeItem(storageKey);
+      localStorage.removeItem(cachedTicketKey);
+      setHasSavedTicket(false);
+      setTicket(null);
+      setTicketError("");
+      prevStatusRef.current = null;
+      return;
+    }
+
+    fetchFailuresRef.current += 1;
+    setTicketError(lastError?.message || "Tidak bisa menghubungi server.");
   }, [storageKey, cachedTicketKey, queue?.nama_antrean]);
 
   useEffect(() => {
     if (!ticket || FINAL_STATUSES.includes(ticket.status)) return;
     const participantToken = ticket.participant_token;
-    const refresh = () => fetchTicket(participantToken);
-    const interval = setInterval(refresh, 4000);
+    let timer = null;
+
+    // Interval dinamis: kalau server sedang error, polling diperlambat supaya
+    // tidak menambah beban, tapi kembali cepat begitu server sehat.
+    const tick = async () => {
+      await fetchTicket(participantToken);
+      const backoff = Math.min(
+        POLL_INTERVAL_MS * 2 ** Math.min(fetchFailuresRef.current, 3),
+        MAX_POLL_INTERVAL_MS
+      );
+      timer = setTimeout(tick, fetchFailuresRef.current === 0 ? POLL_INTERVAL_MS : backoff);
+    };
+    timer = setTimeout(tick, POLL_INTERVAL_MS);
 
     // Tab yang di-background di-throttle browser (bisa jadi cuma 1x per menit),
     // jadi langsung refresh begitu user kembali ke halaman.
     const refreshWhenVisible = () => {
-      if (!document.hidden) refresh();
+      if (!document.hidden) fetchTicket(participantToken);
     };
     document.addEventListener("visibilitychange", refreshWhenVisible);
     window.addEventListener("focus", refreshWhenVisible);
     window.addEventListener("online", refreshWhenVisible);
 
     return () => {
-      clearInterval(interval);
+      if (timer) clearTimeout(timer);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.removeEventListener("focus", refreshWhenVisible);
       window.removeEventListener("online", refreshWhenVisible);
@@ -295,9 +332,20 @@ export default function QueueGuestPage() {
           </button>
         )}
         {ticketError && (
-          <p className="text-center text-xs text-ink-soft mt-3">
-            Gagal menghubungi server. Ini tiket terakhir yang tersimpan — status akan diperbarui begitu koneksi kembali.
-          </p>
+          <div className="mt-3 rounded-xl border border-mist bg-white p-3 text-center">
+            <p className="text-xs text-ink-soft">
+              Belum bisa terhubung ke server: <span className="font-semibold text-ink">{ticketError}</span>
+            </p>
+            <p className="text-xs text-ink-soft mt-1">
+              Tiket di atas masih berlaku dan akan diperbarui otomatis.
+            </p>
+            <button
+              onClick={retrySavedTicket}
+              className="mt-2 rounded-lg border border-mist-dark text-ink text-xs font-semibold px-3 py-1.5 hover:bg-mist transition-colors"
+            >
+              Coba lagi
+            </button>
+          </div>
         )}
         <p className="text-center text-xs text-ink-soft mt-4">
           Halaman ini otomatis diperbarui. Boleh ditutup dan dibuka lagi kapan saja.
