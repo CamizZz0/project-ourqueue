@@ -4,6 +4,7 @@ import { Loader2, Ticket, Users, AlertCircle, CheckCircle2, SkipForward, Bell } 
 import api from "../../utils/api";
 import { registerSW, subscribePush, isPushSupported } from "../../utils/push";
 import { supportsEntryStream, openTicketStream } from "../../utils/entryStream";
+import { setParticipantManifest, resetManifest } from "../../utils/manifest";
 
 const FIELD_LABELS = {
   nama: "Nama",
@@ -27,6 +28,17 @@ const MAX_POLL_INTERVAL_MS = 30000;
 const FETCH_ATTEMPTS = 3;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Simpan token peserta di URL (/q/<qrToken>?t=<token>). Dipakai supaya app yang
+// dipasang ke Home Screen mendarat di tiket peserta: Android/desktop lewat start_url
+// di manifest, iOS lewat URL halaman saat dipasang. Tanpa itu, app Home Screen
+// (storage-nya terpisah) akan menampilkan form pendaftaran dan peserta dapat nomor baru.
+function syncTicketUrl(qrToken, participantToken) {
+  if (typeof window === "undefined" || !qrToken) return;
+  const next = participantToken ? `/q/${qrToken}?t=${participantToken}` : `/q/${qrToken}`;
+  if (`${window.location.pathname}${window.location.search}` === next) return;
+  window.history.replaceState(null, "", next);
+}
 
 // Notifikasi in-app (fallback saat tab terbuka). SEMUA akses API Notification harus
 // dijaga di dalam sini: di webview in-app (mis. buka lewat scan QR dari aplikasi
@@ -90,6 +102,30 @@ export default function QueueGuestPage() {
     else if (Notification.permission === "granted") setPushState("checking");
   }, []);
 
+  // Peserta yang memasang halaman ini ke Home Screen harus mendarat di tiketnya
+  // sendiri, bukan di halaman depan. Android/desktop mengambil start_url dari
+  // manifest ini; di iOS Safari memakai URL halaman saat dipasang. Dua-duanya wajib
+  // membawa token peserta (?t=...), karena app Home Screen punya storage sendiri —
+  // tanpa token itu, app yang terpasang malah menampilkan form pendaftaran baru.
+  useEffect(() => {
+    const participantToken = ticket?.participant_token;
+    setParticipantManifest(
+      participantToken ? `/q/${qrToken}?t=${participantToken}` : `/q/${qrToken}`
+    );
+    return () => resetManifest();
+  }, [qrToken, ticket?.participant_token]);
+
+  // Jaga URL tetap membawa token peserta supaya:
+  // 1) di iOS, "Tambah ke Layar Utama" menyimpan URL ini sebagai start_url;
+  // 2) tiket bisa dibuka lagi dari perangkat/browser lain tanpa ambil nomor baru.
+  // Hanya menambah — kalau tiketnya belum diketahui, URL tidak disentuh sama sekali
+  // (kalau tidak, ?t= bisa terhapus sebelum sempat dibaca saat halaman dimuat).
+  useEffect(() => {
+    const participantToken = ticket?.participant_token;
+    if (!participantToken) return;
+    syncTicketUrl(qrToken, participantToken);
+  }, [qrToken, ticket?.participant_token]);
+
   // Permission granted di browser belum cukup: server harus punya subscription-nya.
   // Kalau sinkronisasi gagal, tampilkan pesan supaya user bisa coba lagi.
   const applyPushResult = useCallback((r) => {
@@ -101,6 +137,11 @@ export default function QueueGuestPage() {
   }, []);
 
   useEffect(() => {
+    // Dibuka dari ikon Home Screen atau link yang dibagikan: token peserta ikut di
+    // URL, dan itu yang dipakai (storage app Home Screen terpisah dari browser).
+    const tokenFromUrl = new URLSearchParams(window.location.search).get("t");
+    if (tokenFromUrl) localStorage.setItem(storageKey, tokenFromUrl);
+
     const savedToken = localStorage.getItem(storageKey);
     if (!savedToken) return;
 
@@ -141,6 +182,8 @@ export default function QueueGuestPage() {
     setTicketError("");
     setHasSavedTicket(false);
     prevStatusRef.current = null;
+    // Hapus juga ?t= dari URL, kalau tidak token lama akan dipakai lagi saat reload.
+    syncTicketUrl(qrToken, null);
   };
 
   // Satu pintu untuk semua update tiket, dipakai oleh polling DAN stream SSE.
@@ -187,7 +230,9 @@ export default function QueueGuestPage() {
     setTicket(null);
     setTicketError("");
     prevStatusRef.current = null;
-  }, [storageKey, cachedTicketKey]);
+    // URL juga dibersihkan, biar token yang sudah mati tidak ikut terpakai lagi.
+    syncTicketUrl(qrToken, null);
+  }, [storageKey, cachedTicketKey, qrToken]);
 
   const fetchTicket = useCallback(async (participantToken) => {
     // Serverless (cold start) + Neon kadang membuat satu request gagal begitu saja,
