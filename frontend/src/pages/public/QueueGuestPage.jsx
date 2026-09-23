@@ -5,6 +5,7 @@ import api from "../../utils/api";
 import { registerSW, subscribePush, isPushSupported } from "../../utils/push";
 import { supportsEntryStream, openTicketStream } from "../../utils/entryStream";
 import { setParticipantManifest, resetManifest } from "../../utils/manifest";
+import { rememberLastTicket, forgetLastTicket } from "../../utils/lastTicket";
 
 const FIELD_LABELS = {
   nama: "Nama",
@@ -124,6 +125,9 @@ export default function QueueGuestPage() {
     const participantToken = ticket?.participant_token;
     if (!participantToken) return;
     syncTicketUrl(qrToken, participantToken);
+    // Ingat tiket ini supaya halaman depan bisa mengarahkan peserta ke sini lagi
+    // (mis. saat app Home Screen dibuka dan start_url-nya "/").
+    rememberLastTicket(`/q/${qrToken}?t=${participantToken}`);
   }, [qrToken, ticket?.participant_token]);
 
   // Permission granted di browser belum cukup: server harus punya subscription-nya.
@@ -184,6 +188,7 @@ export default function QueueGuestPage() {
     prevStatusRef.current = null;
     // Hapus juga ?t= dari URL, kalau tidak token lama akan dipakai lagi saat reload.
     syncTicketUrl(qrToken, null);
+    forgetLastTicket();
   };
 
   // Satu pintu untuk semua update tiket, dipakai oleh polling DAN stream SSE.
@@ -232,6 +237,7 @@ export default function QueueGuestPage() {
     prevStatusRef.current = null;
     // URL juga dibersihkan, biar token yang sudah mati tidak ikut terpakai lagi.
     syncTicketUrl(qrToken, null);
+    forgetLastTicket();
   }, [storageKey, cachedTicketKey, qrToken]);
 
   const fetchTicket = useCallback(async (participantToken) => {

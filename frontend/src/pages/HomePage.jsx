@@ -1,8 +1,18 @@
 import React from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { QrCode, ListOrdered, Users2, ArrowRight } from "lucide-react";
+import { getLastTicket, hasAdminSession } from "../utils/lastTicket";
 
 export default function HomePage() {
+  // Peserta yang memasang app ke Home Screen bisa mendarat di sini: di Android
+  // start_url diambil dari manifest (ikon yang dipasang sebelum perubahan masih "/"),
+  // di iOS storage app-nya terpisah. Kalau perangkat ini punya tiket terakhir dan
+  // tidak ada sesi admin, arahkan ke tiketnya — jangan ke dashboard.
+  const lastTicket = getLastTicket();
+  if (lastTicket && !hasAdminSession()) {
+    return <Navigate to={lastTicket} replace />;
+  }
+
   return (
     <div>
       <section className="max-w-4xl mx-auto px-4 sm:px-6 pt-16 pb-14 text-center">
