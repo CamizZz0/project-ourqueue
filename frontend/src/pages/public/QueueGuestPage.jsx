@@ -27,6 +27,26 @@ const FETCH_ATTEMPTS = 3;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Notifikasi in-app (fallback saat tab terbuka). SEMUA akses API Notification harus
+// dijaga di dalam sini: di webview in-app (mis. buka lewat scan QR dari aplikasi
+// Kamera iOS), `Notification` tidak ada sama sekali → kalau diakses langsung akan
+// melempar ReferenceError dan menggagalkan update status tiket.
+function notifyCallingInApp(ticket, namaAntrean) {
+  try {
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission !== "granted") return;
+    if (document.hidden) return;
+    new Notification(`Giliran kamu! #${ticket.nomor_antrean}`, {
+      body: `${namaAntrean || "Antrean"} — silakan menuju loket`,
+      icon: "/favicon.svg",
+    });
+  } catch (e) {
+    // iOS Safari tidak selalu mengizinkan konstruktor Notification (butuh push
+    // lewat service worker), jadi kegagalan di sini tidak boleh mengganggu apa pun.
+    console.warn("[tiket] notif in-app gagal:", e?.message || e);
+  }
+}
+
 export default function QueueGuestPage() {
   const { qrToken } = useParams();
   const storageKey = `ourqueue_ticket_${qrToken}`;
@@ -129,15 +149,18 @@ export default function QueueGuestPage() {
       try {
         const res = await api.get(`/entries/${participantToken}`);
         const newTicket = res.data.tiket;
-        // deteksi transisi waiting -> calling untuk notif in-app fallback (tab terbuka)
-        if (prevStatusRef.current === "waiting" && newTicket.status === "calling" && Notification.permission === "granted" && document.hidden === false) {
-          try { new Notification(`Giliran kamu! #${newTicket.nomor_antrean}`, { body: `${queue?.nama_antrean || "Antrean"} — silakan menuju loket`, icon: "/favicon.svg" }); } catch {}
-        }
+        const wasWaiting = prevStatusRef.current === "waiting";
+
+        // Update state DULU, sebelum apa pun yang menyentuh API notifikasi. Dengan
+        // urutan ini, kegagalan notifikasi tidak pernah bisa menggagalkan update
+        // status tiket (dulu justru itu penyebab tiket tetap "Menunggu giliran"
+        // ketika peserta sudah dipanggil).
         prevStatusRef.current = newTicket.status;
         setTicket(newTicket);
         setAheadCount(res.data.sisa_antrean_di_depan);
         setTicketError("");
         fetchFailuresRef.current = 0;
+
         // simpan sebagai cache supaya refresh menampilkan tiket ini lagi, bukan form
         try {
           localStorage.setItem(
@@ -145,6 +168,12 @@ export default function QueueGuestPage() {
             JSON.stringify({ tiket: newTicket, sisa_antrean_di_depan: res.data.sisa_antrean_di_depan })
           );
         } catch {}
+
+        // Notif in-app saat transisi waiting -> calling
+        if (wasWaiting && newTicket.status === "calling") {
+          notifyCallingInApp(newTicket, queue?.nama_antrean);
+        }
+
         return;
       } catch (err) {
         lastError = err;
@@ -297,6 +326,11 @@ export default function QueueGuestPage() {
             )}
           </div>
         </div>
+        {ticket.status === "waiting" && pushState === "unsupported" && (
+          <p className="text-center text-xs text-ink-soft mt-3">
+            Notifikasi tidak tersedia di browser ini. Buka halaman ini lewat Safari/Chrome (lalu &quot;Tambah ke Layar Utama&quot;) supaya tetap dipanggil meski tab tertutup.
+          </p>
+        )}
         {ticket.status === "waiting" && pushState === "checking" && (
           <p className="text-center text-xs text-ink-soft mt-3 flex items-center justify-center gap-1">
             <Bell size={12} /> Memeriksa status notifikasi...
