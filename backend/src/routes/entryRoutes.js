@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   takeQueueEntry,
   getEntryByToken,
+  streamEntryByToken,
   updateEntryStatus,
   deleteEntry,
 } from "../controllers/entryController.js";
@@ -22,6 +23,9 @@ router.post("/", takeTicketLimiter, validate(takeEntrySchema), takeQueueEntry);
 router.patch("/:id/status", verifyToken, validate(entryStatusSchema), updateEntryStatus);
 
 router.delete("/:id", verifyToken, validate(entryIdParam), deleteEntry);
+
+// SSE realtime status tiket (didaftarkan sebelum /:token)
+router.get("/:token/stream", validate(participantTokenParam), streamEntryByToken);
 
 router.get("/:token", validate(participantTokenParam), getEntryByToken);
 

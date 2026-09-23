@@ -5,6 +5,97 @@ import { queues, queueEntries } from "../db/schema.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { notifyCalling } from "../services/pushService.js";
 
+// ===== Server-Sent Events (realtime status tiket peserta) =====
+// Stream ini mengecek perubahan di DB sendiri (instance Vercel tidak berbagi memori),
+// jadi event fan-out tidak butuh Redis. Query per tick dibuat seringan mungkin.
+const SSE_POLL_MS = 2000;
+const SSE_PING_MS = 15000;
+// Function Vercel dibatasi umurnya (Hobby 300s), jadi tutup sendiri dengan rapi
+// sebelum diputus paksa. EventSource akan otomatis menyambung ulang.
+const SSE_MAX_LIFETIME_MS = 240000;
+const FINAL_STATUSES = ["completed", "skipped", "cancelled"];
+
+const entryFields = {
+  id: queueEntries.id,
+  queue_id: queueEntries.queue_id,
+  nomor_antrean: queueEntries.nomor_antrean,
+  data_peserta: queueEntries.data_peserta,
+  status: queueEntries.status,
+  participant_token: queueEntries.participant_token,
+  created_at: queueEntries.created_at,
+  nama_antrean: queues.nama_antrean,
+  queue_status: queues.status,
+};
+
+// State lengkap sebuah tiket (dipakai GET /:token dan event pertama pada stream)
+async function loadEntryState(token) {
+  const [entry] = await db
+    .select(entryFields)
+    .from(queueEntries)
+    .innerJoin(queues, eq(queueEntries.queue_id, queues.id))
+    .where(eq(queueEntries.participant_token, token))
+    .limit(1);
+
+  if (!entry) return null;
+
+  const [aheadCountResult] = await db
+    .select({
+      count: sql`COUNT(*)`.as("count"),
+    })
+    .from(queueEntries)
+    .where(
+      and(
+        eq(queueEntries.queue_id, entry.queue_id),
+        eq(queueEntries.status, "waiting"),
+        lt(queueEntries.nomor_antrean, entry.nomor_antrean)
+      )
+    );
+
+  return {
+    tiket: entry,
+    sisa_antrean_di_depan: Number(aheadCountResult?.count || 0),
+  };
+}
+
+// State ringan untuk polling di dalam stream: 1 round trip saja.
+// Hanya berisi field yang berubah-ubah, frontend akan menggabungkannya dengan data lama.
+async function loadEntryLightState(token) {
+  const [row] = await db
+    .select({
+      participant_token: queueEntries.participant_token,
+      nomor_antrean: queueEntries.nomor_antrean,
+      status: queueEntries.status,
+      sisa_antrean_di_depan: sql`(
+        SELECT COUNT(*) FROM ${queueEntries} AS ahead
+        WHERE ahead.queue_id = ${queueEntries.queue_id}
+          AND ahead.status = 'waiting'
+          AND ahead.nomor_antrean < ${queueEntries.nomor_antrean}
+      )`.as("sisa_antrean_di_depan"),
+    })
+    .from(queueEntries)
+    .where(eq(queueEntries.participant_token, token))
+    .limit(1);
+
+  if (!row) return null;
+
+  return {
+    tiket: {
+      participant_token: row.participant_token,
+      nomor_antrean: row.nomor_antrean,
+      status: row.status,
+    },
+    sisa_antrean_di_depan: Number(row.sisa_antrean_di_depan || 0),
+  };
+}
+
+function sseWrite(res, event, data) {
+  if (event) res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+const stateSignature = (state) =>
+  `${state.tiket.status}|${state.tiket.nomor_antrean}|${state.sisa_antrean_di_depan}`;
+
 export const takeQueueEntry = async (req, res, next) => {
   try {
     const { queue_id: numericQueueId, data_peserta } = req.body;
@@ -102,49 +193,101 @@ export const takeQueueEntry = async (req, res, next) => {
 
 export const getEntryByToken = async (req, res, next) => {
   try {
-    const { token } = req.params;
-
-    const [entry] = await db
-      .select({
-        id: queueEntries.id,
-        queue_id: queueEntries.queue_id,
-        nomor_antrean: queueEntries.nomor_antrean,
-        data_peserta: queueEntries.data_peserta,
-        status: queueEntries.status,
-        participant_token: queueEntries.participant_token,
-        created_at: queueEntries.created_at,
-        nama_antrean: queues.nama_antrean,
-        queue_status: queues.status,
-      })
-      .from(queueEntries)
-      .innerJoin(queues, eq(queueEntries.queue_id, queues.id))
-      .where(eq(queueEntries.participant_token, token))
-      .limit(1);
-
-    if (!entry) {
+    const state = await loadEntryState(req.params.token);
+    if (!state) {
       return sendError(res, "Tiket antrean tidak ditemukan.", null, 404);
     }
 
-    const [aheadCountResult] = await db
-      .select({
-        count: sql`COUNT(*)`.as("count"),
-      })
-      .from(queueEntries)
-      .where(
-        and(
-          eq(queueEntries.queue_id, entry.queue_id),
-          eq(queueEntries.status, "waiting"),
-          lt(queueEntries.nomor_antrean, entry.nomor_antrean)
-        )
-      );
-
-    const sisaAntreanDiDepan = Number(aheadCountResult?.count || 0);
-
-    return sendSuccess(res, "Data tiket berhasil ditemukan.", {
-      tiket: entry,
-      sisa_antrean_di_depan: sisaAntreanDiDepan,
-    });
+    return sendSuccess(res, "Data tiket berhasil ditemukan.", state);
   } catch (error) {
+    next(error);
+  }
+};
+
+// GET /api/entries/:token/stream — SSE: server kirim update begitu status tiket berubah.
+export const streamEntryByToken = async (req, res, next) => {
+  const { token } = req.params;
+
+  try {
+    // Pastikan tiketnya ada sebelum membuka koneksi panjang.
+    const initialState = await loadEntryState(token);
+    if (!initialState) {
+      return sendError(res, "Tiket antrean tidak ditemukan.", null, 404);
+    }
+
+    res.set({
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders?.();
+
+    // Hint ke EventSource: sambung ulang 2 detik setelah koneksi ditutup server.
+    res.write("retry: 2000\n\n");
+
+    let finished = false;
+    let busy = false;
+    let lastSignature = "";
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearInterval(pollTimer);
+      clearInterval(pingTimer);
+      clearTimeout(lifetimeTimer);
+      try {
+        res.end();
+      } catch {}
+    };
+
+    const pushState = (state) => {
+      const signature = stateSignature(state);
+      if (signature === lastSignature) return;
+      lastSignature = signature;
+      sseWrite(res, "ticket", state);
+    };
+
+    pushState(initialState);
+
+    const pollTimer = setInterval(async () => {
+      if (busy || finished) return;
+      busy = true;
+      try {
+        const state = await loadEntryLightState(token);
+        if (!state) {
+          // Tiket dihapus admin / antrean direset.
+          sseWrite(res, "gone", { participant_token: token });
+          return finish();
+        }
+        pushState(state);
+        // Status akhir: tidak ada lagi yang perlu ditunggu.
+        if (FINAL_STATUSES.includes(state.tiket.status)) return finish();
+      } catch (e) {
+        console.error("[sse] gagal cek status tiket:", e.message);
+      } finally {
+        busy = false;
+      }
+    }, SSE_POLL_MS);
+
+    // Ping berkala: menjaga koneksi tetap hidup dan dipakai frontend sebagai detak
+    // untuk mendeteksi koneksi yang macet.
+    const pingTimer = setInterval(() => {
+      if (finished) return;
+      sseWrite(res, "ping", { t: Date.now() });
+    }, SSE_PING_MS);
+
+    const lifetimeTimer = setTimeout(finish, SSE_MAX_LIFETIME_MS);
+
+    req.on("close", finish);
+    res.on("close", finish);
+  } catch (error) {
+    if (res.headersSent) {
+      try {
+        res.end();
+      } catch {}
+      return;
+    }
     next(error);
   }
 };

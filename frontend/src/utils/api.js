@@ -1,8 +1,12 @@
 import axios from "axios";
 
+// Base URL API, dipakai juga oleh EventSource (SSE) yang tidak lewat axios
+// karena butuh URL penuh.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5001/api";
+
 // Inisialisasi instance Axios dengan baseURL dari environment
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5001/api",
+  baseURL: API_BASE_URL,
   headers: {
     "Content-Type": "application/json",
   },

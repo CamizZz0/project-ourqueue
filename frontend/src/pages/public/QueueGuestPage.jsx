@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { Loader2, Ticket, Users, AlertCircle, CheckCircle2, SkipForward, Bell } from "lucide-react";
 import api from "../../utils/api";
 import { registerSW, subscribePush, isPushSupported } from "../../utils/push";
+import { supportsEntryStream, openTicketStream } from "../../utils/entryStream";
 
 const FIELD_LABELS = {
   nama: "Nama",
@@ -68,6 +69,8 @@ export default function QueueGuestPage() {
   const fetchFailuresRef = useRef(0);
   // idle | checking | granted | denied | unsupported | sync-failed
   const [pushState, setPushState] = useState("idle");
+  // off | connecting | live | error — status koneksi SSE (update realtime)
+  const [streamState, setStreamState] = useState("off");
   const prevStatusRef = useRef(null);
 
   useEffect(() => {
@@ -140,6 +143,52 @@ export default function QueueGuestPage() {
     prevStatusRef.current = null;
   };
 
+  // Satu pintu untuk semua update tiket, dipakai oleh polling DAN stream SSE.
+  // Update state dilakukan sebelum apa pun yang menyentuh API notifikasi, supaya
+  // kegagalan notifikasi tidak pernah bisa menggagalkan update status tiket.
+  const applyTicketData = useCallback((newTicket, sisaAntreanDiDepan) => {
+    if (!newTicket) return;
+
+    const wasWaiting = prevStatusRef.current === "waiting";
+    prevStatusRef.current = newTicket.status;
+    setTicket((prev) => ({ ...prev, ...newTicket }));
+    if (typeof sisaAntreanDiDepan === "number") setAheadCount(sisaAntreanDiDepan);
+    setTicketError("");
+    fetchFailuresRef.current = 0;
+
+    // simpan sebagai cache supaya refresh menampilkan tiket ini lagi, bukan form
+    try {
+      const cached = JSON.parse(localStorage.getItem(cachedTicketKey) || "null");
+      localStorage.setItem(
+        cachedTicketKey,
+        JSON.stringify({
+          tiket: { ...(cached?.tiket || {}), ...newTicket },
+          sisa_antrean_di_depan:
+            typeof sisaAntreanDiDepan === "number"
+              ? sisaAntreanDiDepan
+              : cached?.sisa_antrean_di_depan ?? 0,
+        })
+      );
+    } catch {}
+
+    // Notif in-app saat transisi waiting -> calling
+    if (wasWaiting && newTicket.status === "calling") {
+      notifyCallingInApp(newTicket, queue?.nama_antrean);
+    }
+  }, [cachedTicketKey, queue?.nama_antrean]);
+
+  // Tiket benar-benar sudah tidak ada di server (dihapus admin / antrean direset).
+  // Error lain (jaringan, 429, 5xx) TIDAK boleh menghapus tiket: user jadi dilempar
+  // ke form pendaftaran dan mengambil nomor baru (duplikat).
+  const clearSavedTicket = useCallback(() => {
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(cachedTicketKey);
+    setHasSavedTicket(false);
+    setTicket(null);
+    setTicketError("");
+    prevStatusRef.current = null;
+  }, [storageKey, cachedTicketKey]);
+
   const fetchTicket = useCallback(async (participantToken) => {
     // Serverless (cold start) + Neon kadang membuat satu request gagal begitu saja,
     // jadi coba beberapa kali dulu sebelum menampilkan error ke user.
@@ -148,32 +197,7 @@ export default function QueueGuestPage() {
     for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
       try {
         const res = await api.get(`/entries/${participantToken}`);
-        const newTicket = res.data.tiket;
-        const wasWaiting = prevStatusRef.current === "waiting";
-
-        // Update state DULU, sebelum apa pun yang menyentuh API notifikasi. Dengan
-        // urutan ini, kegagalan notifikasi tidak pernah bisa menggagalkan update
-        // status tiket (dulu justru itu penyebab tiket tetap "Menunggu giliran"
-        // ketika peserta sudah dipanggil).
-        prevStatusRef.current = newTicket.status;
-        setTicket(newTicket);
-        setAheadCount(res.data.sisa_antrean_di_depan);
-        setTicketError("");
-        fetchFailuresRef.current = 0;
-
-        // simpan sebagai cache supaya refresh menampilkan tiket ini lagi, bukan form
-        try {
-          localStorage.setItem(
-            cachedTicketKey,
-            JSON.stringify({ tiket: newTicket, sisa_antrean_di_depan: res.data.sisa_antrean_di_depan })
-          );
-        } catch {}
-
-        // Notif in-app saat transisi waiting -> calling
-        if (wasWaiting && newTicket.status === "calling") {
-          notifyCallingInApp(newTicket, queue?.nama_antrean);
-        }
-
+        applyTicketData(res.data.tiket, res.data.sisa_antrean_di_depan);
         return;
       } catch (err) {
         lastError = err;
@@ -186,24 +210,42 @@ export default function QueueGuestPage() {
     console.warn("[tiket] gagal memuat status tiket:", lastError?.statusCode, lastError?.message);
 
     if (lastError?.statusCode === 404) {
-      // Tiket benar-benar sudah tidak ada (dihapus admin / antrean direset).
-      // Error lain (jaringan, 429, 5xx) TIDAK boleh menghapus tiket: user jadi
-      // dilempar ke form dan mengambil nomor baru (duplikat).
-      localStorage.removeItem(storageKey);
-      localStorage.removeItem(cachedTicketKey);
-      setHasSavedTicket(false);
-      setTicket(null);
-      setTicketError("");
-      prevStatusRef.current = null;
+      clearSavedTicket();
       return;
     }
 
     fetchFailuresRef.current += 1;
     setTicketError(lastError?.message || "Tidak bisa menghubungi server.");
-  }, [storageKey, cachedTicketKey, queue?.nama_antrean]);
+  }, [applyTicketData, clearSavedTicket]);
+
+  // SSE: sumber update utama. Stream-nya yang menjaga koneksi ke server, jadi
+  // perubahan status sampai tanpa harus menembak request tiap 4 detik.
+  useEffect(() => {
+    const participantToken = ticket?.participant_token;
+    if (!participantToken) return;
+    // Status sudah final: tidak ada lagi yang perlu ditunggu.
+    if (FINAL_STATUSES.includes(ticket.status)) return;
+    if (!supportsEntryStream()) return;
+
+    setStreamState("connecting");
+    const stream = openTicketStream(participantToken, {
+      onStatusChange: setStreamState,
+      onTicket: (state) => applyTicketData(state?.tiket, state?.sisa_antrean_di_depan),
+      onGone: clearSavedTicket,
+      onError: () => setStreamState("error"),
+    });
+
+    return () => {
+      stream.close();
+      setStreamState("off");
+    };
+  }, [ticket?.participant_token, ticket?.status, applyTicketData, clearSavedTicket]);
 
   useEffect(() => {
     if (!ticket || FINAL_STATUSES.includes(ticket.status)) return;
+    // Selama stream realtime hidup, polling dimatikan — ini inti penghematan
+    // invocation function di Vercel.
+    if (streamState === "live") return;
     const participantToken = ticket.participant_token;
     let timer = null;
 
@@ -234,7 +276,7 @@ export default function QueueGuestPage() {
       window.removeEventListener("focus", refreshWhenVisible);
       window.removeEventListener("online", refreshWhenVisible);
     };
-  }, [ticket, fetchTicket]);
+  }, [ticket, fetchTicket, streamState]);
 
   const handleFieldChange = (key, value) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -382,6 +424,7 @@ export default function QueueGuestPage() {
           </div>
         )}
         <p className="text-center text-xs text-ink-soft mt-4">
+          {streamState === "live" ? "Terhubung langsung (realtime). " : ""}
           Halaman ini otomatis diperbarui. Boleh ditutup dan dibuka lagi kapan saja.
         </p>
       </div>
