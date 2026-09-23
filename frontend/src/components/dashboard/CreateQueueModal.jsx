@@ -48,16 +48,16 @@ export default function CreateQueueModal({ onClose, onCreated }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-mist">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-mist">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-3 sm:px-4">
+      <div className="w-full max-w-md bg-white rounded-xl sm:rounded-2xl shadow-xl border border-mist max-h-[92vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 border-b border-mist sticky top-0 bg-white rounded-t-xl sm:rounded-t-2xl z-10">
           <h2 className="font-bold text-ink text-lg">Buat antrean baru</h2>
           <button onClick={onClose} className="text-ink-soft hover:text-ink">
             <X size={20} />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+        <form onSubmit={handleSubmit} className="px-4 sm:px-6 py-5 space-y-4">
           {error && (
             <div className="rounded-lg bg-ink/10 border border-ink/30 text-ink text-sm px-3 py-2">
               {error}

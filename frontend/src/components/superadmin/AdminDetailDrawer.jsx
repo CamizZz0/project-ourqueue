@@ -33,7 +33,7 @@ export default function AdminDetailDrawer({ adminId, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-ink/40 backdrop-blur-sm">
-      <div className="w-full max-w-xl bg-white h-full overflow-y-auto rounded-l-2xl shadow-xl">
+      <div className="w-full max-w-[92vw] sm:max-w-xl bg-white h-full overflow-y-auto sm:rounded-l-2xl shadow-xl">
         <div className="flex items-center justify-between px-6 py-4 border-b border-mist sticky top-0 bg-white z-10">
           <h2 className="font-bold text-ink text-lg">Detail Admin</h2>
           <button onClick={onClose} className="text-ink-soft hover:text-ink">

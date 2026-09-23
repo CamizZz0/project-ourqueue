@@ -77,15 +77,15 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-      <div className="flex items-center justify-between mb-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8">
         <div>
-          <h1 className="text-2xl font-extrabold text-ink">Antrean kamu</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-ink">Antrean kamu</h1>
           <p className="text-sm text-ink-soft mt-1">Kelola semua antrean dari satu tempat.</p>
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 rounded-lg bg-accent text-white font-semibold px-4 py-2.5 hover:bg-accent-dark transition-colors"
+          className="flex items-center justify-center gap-2 rounded-lg bg-accent text-white font-semibold px-4 py-2.5 hover:bg-accent-dark transition-colors w-full sm:w-auto"
         >
           <Plus size={18} />
           Antrean baru
@@ -132,7 +132,7 @@ export default function DashboardPage() {
                 </span>
                 <button
                   onClick={(e) => handleDelete(e, q.id)}
-                  className="text-ink-soft/50 hover:text-ink opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="text-ink-soft/50 hover:text-ink opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                   title="Hapus antrean"
                 >
                   <Trash2 size={16} />

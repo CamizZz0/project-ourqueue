@@ -77,20 +77,20 @@ export default function AdminsPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-extrabold text-ink">Admin</h1>
+          <h1 className="text-xl sm:text-2xl font-extrabold text-ink">Admin</h1>
           <p className="text-sm text-ink-soft mt-1">Kelola seluruh akun admin yang terdaftar.</p>
         </div>
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-soft" />
           <input
             type="text"
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             placeholder="Cari nama atau email..."
-            className="text-sm rounded-lg border border-mist-dark pl-8 pr-3.5 py-2.5 outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent w-64"
+            className="text-sm rounded-lg border border-mist-dark pl-8 pr-3.5 py-2.5 outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent w-full sm:w-64"
           />
         </div>
       </div>
@@ -105,8 +105,8 @@ export default function AdminsPage() {
         </div>
       ) : (
         <>
-          <div className="bg-white rounded-2xl border border-mist overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-2xl border border-mist overflow-hidden overflow-x-auto -mx-4 sm:mx-0">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="bg-mist/50 text-left text-xs uppercase text-ink-soft">
                   <th className="px-4 py-3 font-semibold">Nama</th>

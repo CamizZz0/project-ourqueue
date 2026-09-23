@@ -210,9 +210,9 @@ export default function QueueDetailPanel({ queueId, onClose, onQueueChanged }) {
   const displayedEntries = selectedDate ? entriesOnDate(selectedDate) : entries;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4 py-8">
-      <div className="w-full max-w-3xl max-h-full overflow-y-auto bg-white rounded-2xl shadow-xl border border-mist">
-        <div className="flex items-start justify-between px-6 py-4 border-b border-mist sticky top-0 bg-white rounded-t-2xl z-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-3 sm:px-4 py-4 sm:py-8">
+      <div className="w-full max-w-3xl max-h-[92vh] sm:max-h-full overflow-y-auto bg-white rounded-xl sm:rounded-2xl shadow-xl border border-mist">
+        <div className="flex items-start justify-between px-4 sm:px-6 py-4 border-b border-mist sticky top-0 bg-white rounded-t-xl sm:rounded-t-2xl z-10">
           <div>
             <h2 className="font-bold text-ink text-lg">{queue?.nama_antrean || "Memuat..."}</h2>
             {queue?.deskripsi && <p className="text-sm text-ink-soft mt-0.5">{queue.deskripsi}</p>}
@@ -302,7 +302,7 @@ export default function QueueDetailPanel({ queueId, onClose, onQueueChanged }) {
             </div>
           </form>
         ) : (
-          <div className="grid md:grid-cols-[220px_1fr] gap-6 p-6">
+          <div className="grid md:grid-cols-[220px_1fr] gap-4 sm:gap-6 p-4 sm:p-6">
             <div className="flex flex-col items-center gap-3">
               <div className="rounded-xl border border-mist p-3 bg-white">
                 <img src={qrImageUrl} alt="QR Code antrean" width={180} height={180} />

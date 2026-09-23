@@ -23,9 +23,9 @@ export default function StatsPage() {
   }, []);
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
       <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-ink">Dashboard Superadmin</h1>
+        <h1 className="text-xl sm:text-2xl font-extrabold text-ink">Dashboard Superadmin</h1>
         <p className="text-sm text-ink-soft mt-1">Ringkasan seluruh aktivitas platform OurQueue.</p>
       </div>
 
@@ -36,7 +36,7 @@ export default function StatsPage() {
       ) : error ? (
         <div className="rounded-lg bg-ink/10 border border-ink/30 text-ink text-sm px-3 py-2">{error}</div>
       ) : (
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {STAT_CARDS.map(({ key, label, icon: Icon }) => (
             <div
               key={key}

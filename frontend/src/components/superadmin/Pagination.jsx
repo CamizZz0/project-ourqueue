@@ -6,7 +6,7 @@ export default function Pagination({ meta, onPageChange, itemLabel = "data" }) {
   const { page, totalPages, total } = meta;
 
   return (
-    <div className="flex items-center justify-between text-sm border-t border-mist pt-4 mt-2">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-sm border-t border-mist pt-4 mt-2">
       <p className="text-ink-soft">
         Menampilkan halaman {page} dari {totalPages || 1} ({total ?? 0} {itemLabel})
       </p>
