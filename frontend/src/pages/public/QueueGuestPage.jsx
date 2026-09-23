@@ -18,9 +18,14 @@ const STATUS_COPY = {
   cancelled: { title: "Dibatalkan", cls: "text-ink-soft", icon: SkipForward },
 };
 
+// Status akhir: tiket tidak akan berubah lagi, jadi polling boleh dihentikan.
+const FINAL_STATUSES = ["completed", "skipped", "cancelled"];
+
 export default function QueueGuestPage() {
   const { qrToken } = useParams();
   const storageKey = `ourqueue_ticket_${qrToken}`;
+  // Cache data tiket terakhir, supaya refresh tidak mengembalikan user ke form pendaftaran.
+  const cachedTicketKey = `ourqueue_ticket_data_${qrToken}`;
 
   const [queue, setQueue] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +34,10 @@ export default function QueueGuestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [ticket, setTicket] = useState(null);
   const [aheadCount, setAheadCount] = useState(0);
+  // true selama masih ada tiket tersimpan: form pendaftaran tidak boleh muncul
+  // supaya user tidak mengambil nomor baru tanpa sengaja.
+  const [hasSavedTicket, setHasSavedTicket] = useState(false);
+  const [ticketError, setTicketError] = useState("");
   // idle | checking | granted | denied | unsupported | sync-failed
   const [pushState, setPushState] = useState("idle");
   const prevStatusRef = useRef(null);
@@ -62,15 +71,46 @@ export default function QueueGuestPage() {
 
   useEffect(() => {
     const savedToken = localStorage.getItem(storageKey);
-    if (savedToken) {
-      fetchTicket(savedToken);
-      // re-subscribe di background agar push tetap aktif meski pernah tutup tab
-      if (isPushSupported() && Notification.permission === "granted") {
-        subscribePush(savedToken).then(applyPushResult);
+    if (!savedToken) return;
+
+    // Ada tiket tersimpan → halaman ini fokus ke tiket itu, bukan pendaftaran baru.
+    setHasSavedTicket(true);
+
+    // Tampilkan tiket terakhir dari cache dulu supaya tidak berkedip ke form
+    // sambil menunggu respons server.
+    try {
+      const cached = JSON.parse(localStorage.getItem(cachedTicketKey) || "null");
+      if (cached?.tiket) {
+        setTicket(cached.tiket);
+        setAheadCount(cached.sisa_antrean_di_depan ?? 0);
+        prevStatusRef.current = cached.tiket.status ?? null;
       }
+    } catch {}
+
+    fetchTicket(savedToken);
+
+    // re-subscribe di background agar push tetap aktif meski pernah tutup tab
+    if (isPushSupported() && Notification.permission === "granted") {
+      subscribePush(savedToken).then(applyPushResult);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qrToken]);
+
+  const retrySavedTicket = () => {
+    const savedToken = localStorage.getItem(storageKey);
+    if (savedToken) fetchTicket(savedToken);
+  };
+
+  // Tiket sudah selesai/dilewati/dibatalkan: baru boleh mendaftar nomor baru.
+  const resetTicket = () => {
+    localStorage.removeItem(storageKey);
+    localStorage.removeItem(cachedTicketKey);
+    setTicket(null);
+    setAheadCount(0);
+    setTicketError("");
+    setHasSavedTicket(false);
+    prevStatusRef.current = null;
+  };
 
   const fetchTicket = useCallback(async (participantToken) => {
     try {
@@ -83,15 +123,51 @@ export default function QueueGuestPage() {
       prevStatusRef.current = newTicket.status;
       setTicket(newTicket);
       setAheadCount(res.data.sisa_antrean_di_depan);
-    } catch {
-      localStorage.removeItem(storageKey);
+      setTicketError("");
+      // simpan sebagai cache supaya refresh menampilkan tiket ini lagi, bukan form
+      try {
+        localStorage.setItem(
+          cachedTicketKey,
+          JSON.stringify({ tiket: newTicket, sisa_antrean_di_depan: res.data.sisa_antrean_di_depan })
+        );
+      } catch {}
+    } catch (err) {
+      // Hanya hapus jejak tiket kalau tiketnya memang sudah tidak ada (dihapus admin
+      // atau antrean direset). Error lain (jaringan, 429, 5xx) TIDAK boleh menghapus
+      // tiket: user jadi dilempar ke form dan mengambil nomor baru (duplikat).
+      if (err?.statusCode === 404) {
+        localStorage.removeItem(storageKey);
+        localStorage.removeItem(cachedTicketKey);
+        setHasSavedTicket(false);
+        setTicket(null);
+        prevStatusRef.current = null;
+      } else {
+        setTicketError(err?.message || "Gagal memperbarui status tiket.");
+      }
     }
-  }, [storageKey, queue?.nama_antrean]);
+  }, [storageKey, cachedTicketKey, queue?.nama_antrean]);
 
   useEffect(() => {
-    if (!ticket || ticket.status === "completed" || ticket.status === "skipped") return;
-    const interval = setInterval(() => fetchTicket(ticket.participant_token), 4000);
-    return () => clearInterval(interval);
+    if (!ticket || FINAL_STATUSES.includes(ticket.status)) return;
+    const participantToken = ticket.participant_token;
+    const refresh = () => fetchTicket(participantToken);
+    const interval = setInterval(refresh, 4000);
+
+    // Tab yang di-background di-throttle browser (bisa jadi cuma 1x per menit),
+    // jadi langsung refresh begitu user kembali ke halaman.
+    const refreshWhenVisible = () => {
+      if (!document.hidden) refresh();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+    };
   }, [ticket, fetchTicket]);
 
   const handleFieldChange = (key, value) => {
@@ -116,6 +192,17 @@ export default function QueueGuestPage() {
       });
       const token = res.data.entry.participant_token;
       localStorage.setItem(storageKey, token);
+      try {
+        localStorage.setItem(
+          cachedTicketKey,
+          JSON.stringify({
+            tiket: res.data.entry,
+            sisa_antrean_di_depan: Math.max(res.data.entry.nomor_antrean - 1, 0),
+          })
+        );
+      } catch {}
+      setHasSavedTicket(true);
+      setTicketError("");
       setTicket(res.data.entry);
       prevStatusRef.current = res.data.entry.status;
       setAheadCount(res.data.entry.nomor_antrean - 1);
@@ -199,9 +286,49 @@ export default function QueueGuestPage() {
         {pushState === "denied" && (
           <p className="text-center text-xs text-ink-soft mt-3">Notifikasi diblokir. Aktifkan di pengaturan browser.</p>
         )}
+        {FINAL_STATUSES.includes(ticket.status) && (
+          <button
+            onClick={resetTicket}
+            className="mt-4 w-full rounded-lg border border-mist-dark bg-white text-ink text-sm font-semibold py-2 hover:bg-mist transition-colors"
+          >
+            Ambil nomor baru
+          </button>
+        )}
+        {ticketError && (
+          <p className="text-center text-xs text-ink-soft mt-3">
+            Gagal menghubungi server. Ini tiket terakhir yang tersimpan — status akan diperbarui begitu koneksi kembali.
+          </p>
+        )}
         <p className="text-center text-xs text-ink-soft mt-4">
           Halaman ini otomatis diperbarui. Boleh ditutup dan dibuka lagi kapan saja.
         </p>
+      </div>
+    );
+  }
+
+  // Tiket tersimpan tapi datanya belum/tidak bisa dimuat: tampilkan status pemuatan
+  // atau tombol coba lagi, JANGAN form pendaftaran.
+  if (hasSavedTicket) {
+    return (
+      <div className="max-w-sm mx-auto px-4 py-14 text-center">
+        {ticketError ? (
+          <>
+            <AlertCircle className="text-ink mx-auto mb-3" size={32} />
+            <p className="text-sm font-semibold text-ink mb-1">Tiket kamu belum bisa dimuat</p>
+            <p className="text-xs text-ink-soft mb-4">{ticketError}</p>
+            <button
+              onClick={retrySavedTicket}
+              className="rounded-lg bg-accent text-white text-sm font-semibold px-4 py-2 hover:bg-accent-dark"
+            >
+              Coba lagi
+            </button>
+          </>
+        ) : (
+          <>
+            <Loader2 className="animate-spin text-accent mx-auto" size={32} />
+            <p className="text-sm text-ink-soft mt-3">Memuat tiket antrean kamu...</p>
+          </>
+        )}
       </div>
     );
   }

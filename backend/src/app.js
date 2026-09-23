@@ -52,6 +52,13 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Respons API tidak boleh di-cache (browser/CDN) supaya polling status antrean
+// peserta selalu mendapat data terbaru, bukan respons lama.
+app.use((req, res, next) => {
+  res.set("Cache-Control", "no-store");
+  next();
+});
+
 // Rute Autentikasi
 app.use("/api/auth", authRoutes);
 
