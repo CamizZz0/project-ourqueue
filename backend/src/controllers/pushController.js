@@ -34,6 +34,31 @@ export const subscribePush = async (req, res, next) => {
   } catch (e) { next(e); }
 };
 
+// Endpoint diagnosa: dipakai untuk memastikan subscription peserta benar-benar
+// tersimpan di server (bukan cuma ada di browser). Berguna saat notifikasi
+// terasa "hilang" setelah deploy.
+export const getPushStatus = async (req, res, next) => {
+  try {
+    const { participant_token } = req.params;
+    const [sub] = await db
+      .select({ endpoint: pushSubscriptions.endpoint, updated_at: pushSubscriptions.updated_at })
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.participant_token, participant_token))
+      .limit(1);
+
+    let endpoint_host = null;
+    if (sub?.endpoint) {
+      try { endpoint_host = new URL(sub.endpoint).host; } catch { endpoint_host = "invalid"; }
+    }
+
+    return sendSuccess(res, "Status push subscription", {
+      subscribed: !!sub,
+      updated_at: sub?.updated_at ?? null,
+      endpoint_host,
+    });
+  } catch (e) { next(e); }
+};
+
 export const unsubscribePush = async (req, res, next) => {
   try {
     const { participant_token } = req.body;

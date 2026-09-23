@@ -6,11 +6,13 @@ import { env } from "./env.js";
 
 const connectionString = env.DATABASE_URL;
 
-// Inisialisasi postgres connection pool
+// Vercel serverless: kurangi pool biar tidak exhaust Neon (cold start)
+const isServerless = !!process.env.VERCEL;
 export const client = postgres(connectionString, {
-  max: 10,
+  max: isServerless ? 1 : 10,
   idle_timeout: 20,
   connect_timeout: 10,
+  prepare: false,
 });
 
 // Inisialisasi Drizzle ORM dengan schema

@@ -13,15 +13,34 @@ import pushRoutes from "./routes/pushRoutes.js";
 
 const app = express();
 
-app.use(helmet());
+app.use(
+  helmet({
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+// Origin frontend di Vercel (production & preview) selalu berakhiran .vercel.app
+const VERCEL_ORIGIN_PATTERN = /^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.vercel\.app$/i;
+
+function isOriginAllowed(origin) {
+  if (!origin) return true; // request non-browser (curl, health check, server-to-server)
+  if (env.CLIENT_ORIGINS.includes(origin)) return true;
+  if (env.ALLOW_VERCEL_PREVIEWS && VERCEL_ORIGIN_PATTERN.test(origin)) return true;
+  return false;
+}
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || env.CLIENT_ORIGINS.includes(origin)) {
-        return callback(null, true);
-      }
-      return callback(new Error(`Origin ${origin} tidak diizinkan oleh CORS.`));
+      if (isOriginAllowed(origin)) return callback(null, true);
+      // Jangan lempar Error (dulu jadi 500 dan menutupi penyebab asli); cukup tolak
+      // tanpa header CORS supaya browser memblokir dan alasannya kelihatan di log.
+      console.error(
+        `[CORS] Origin ditolak: ${origin}. Origin yang diizinkan: ${env.CLIENT_ORIGINS.join(", ")}${
+          env.ALLOW_VERCEL_PREVIEWS ? " (+ semua subdomain *.vercel.app)" : ""
+        }`
+      );
+      return callback(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],

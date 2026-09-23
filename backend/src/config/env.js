@@ -1,10 +1,14 @@
 import "dotenv/config";
 
+// Catatan: JANGAN pakai process.exit(1) di sini.
+// Di Vercel (serverless) process.exit mematikan invocation tanpa error yang jelas,
+// jadi kita lempar Error supaya muncul di log function + response 500 yang bisa dilacak.
 function required(name) {
   const value = process.env[name];
   if (!value || value.trim() === "") {
-    console.error(`FATAL: ${name} environment variable is not defined.`);
-    process.exit(1);
+    throw new Error(
+      `FATAL: environment variable ${name} belum diset. Di Vercel: Project Settings → Environment Variables.`
+    );
   }
   return value.trim();
 }
@@ -14,23 +18,33 @@ function optional(name, fallback) {
   return value && value.trim() !== "" ? value.trim() : fallback;
 }
 
+function boolean(name, fallback) {
+  const value = optional(name, null);
+  if (value === null) return fallback;
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function requiredSecret(name, minLength) {
+  const secret = required(name);
+  if (secret.length < minLength) {
+    throw new Error(`FATAL: ${name} minimal ${minLength} karakter.`);
+  }
+  return secret;
+}
+
 export const env = {
   NODE_ENV: optional("NODE_ENV", "development"),
   PORT: Number(optional("PORT", "5001")) || 5001,
   DATABASE_URL: required("DATABASE_URL"),
-  JWT_SECRET: (() => {
-    const secret = required("JWT_SECRET");
-    if (secret.length < 32) {
-      console.error("FATAL: JWT_SECRET must be at least 32 characters long.");
-      process.exit(1);
-    }
-    return secret;
-  })(),
+  JWT_SECRET: requiredSecret("JWT_SECRET", 32),
   JWT_EXPIRES_IN: optional("JWT_EXPIRES_IN", "7d"),
   CLIENT_ORIGINS: optional("CLIENT_ORIGIN", "http://localhost:5173")
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean),
+  // Frontend yang dideploy di Vercel (production maupun preview) otomatis diizinkan.
+  // Set ALLOW_VERCEL_PREVIEWS=false kalau mau membatasi hanya ke CLIENT_ORIGIN.
+  ALLOW_VERCEL_PREVIEWS: boolean("ALLOW_VERCEL_PREVIEWS", true),
   SUPERADMIN_NAME: optional("SUPERADMIN_NAME", "Superadmin"),
   SUPERADMIN_EMAIL: optional("SUPERADMIN_EMAIL", "superadmin@ourqueue.local"),
   SUPERADMIN_PASSWORD: optional("SUPERADMIN_PASSWORD", "Superadmin123!"),

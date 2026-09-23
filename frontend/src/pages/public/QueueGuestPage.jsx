@@ -29,7 +29,8 @@ export default function QueueGuestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [ticket, setTicket] = useState(null);
   const [aheadCount, setAheadCount] = useState(0);
-  const [pushState, setPushState] = useState("idle"); // idle | granted | denied | unsupported
+  // idle | checking | granted | denied | unsupported | sync-failed
+  const [pushState, setPushState] = useState("idle");
   const prevStatusRef = useRef(null);
 
   useEffect(() => {
@@ -43,8 +44,20 @@ export default function QueueGuestPage() {
   useEffect(() => {
     registerSW();
     if (!isPushSupported()) setPushState("unsupported");
-    else if (Notification.permission === "granted") setPushState("granted");
     else if (Notification.permission === "denied") setPushState("denied");
+    // Permission granted di browser belum tentu subscription-nya ada di server
+    // (mis. habis pindah ke deployment baru), jadi tunggu hasil sinkronisasi.
+    else if (Notification.permission === "granted") setPushState("checking");
+  }, []);
+
+  // Permission granted di browser belum cukup: server harus punya subscription-nya.
+  // Kalau sinkronisasi gagal, tampilkan pesan supaya user bisa coba lagi.
+  const applyPushResult = useCallback((r) => {
+    if (r.ok && r.synced) return setPushState("granted");
+    if (r.reason === "denied") return setPushState("denied");
+    if (r.reason === "unsupported") return setPushState("unsupported");
+    if (r.reason === "default") return setPushState("idle");
+    return setPushState("sync-failed");
   }, []);
 
   useEffect(() => {
@@ -53,9 +66,7 @@ export default function QueueGuestPage() {
       fetchTicket(savedToken);
       // re-subscribe di background agar push tetap aktif meski pernah tutup tab
       if (isPushSupported() && Notification.permission === "granted") {
-        subscribePush(savedToken).then((r) => {
-          if (r.ok) setPushState("granted");
-        });
+        subscribePush(savedToken).then(applyPushResult);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -89,10 +100,9 @@ export default function QueueGuestPage() {
 
   const handleEnablePush = async () => {
     if (!ticket) return;
+    setPushState("checking");
     const r = await subscribePush(ticket.participant_token);
-    if (r.ok) setPushState("granted");
-    else if (r.reason === "denied") setPushState("denied");
-    else setPushState(r.reason || "idle");
+    applyPushResult(r);
   };
 
   const handleSubmit = async (e) => {
@@ -111,10 +121,7 @@ export default function QueueGuestPage() {
       setAheadCount(res.data.entry.nomor_antrean - 1);
       // langsung coba subscribe push di background (tidak blokir UX)
       if (isPushSupported()) {
-        subscribePush(token).then((r) => {
-          if (r.ok) setPushState("granted");
-          else if (Notification.permission === "denied") setPushState("denied");
-        });
+        subscribePush(token).then(applyPushResult);
       }
     } catch (err) {
       setError(err.message || "Gagal mengambil nomor antrean.");
@@ -166,11 +173,20 @@ export default function QueueGuestPage() {
             )}
           </div>
         </div>
-        {ticket.status === "waiting" && pushState !== "granted" && pushState !== "unsupported" && (
+        {ticket.status === "waiting" && pushState === "checking" && (
+          <p className="text-center text-xs text-ink-soft mt-3 flex items-center justify-center gap-1">
+            <Bell size={12} /> Memeriksa status notifikasi...
+          </p>
+        )}
+        {ticket.status === "waiting" && (pushState === "idle" || pushState === "sync-failed") && (
           <div className="mt-4 rounded-xl border border-mist bg-white p-3 flex items-center justify-between gap-3">
             <div className="text-left">
               <p className="text-sm font-semibold text-ink flex items-center gap-1.5"><Bell size={14} /> Aktifkan notifikasi</p>
-              <p className="text-xs text-ink-soft">Biar tetap dipanggil meski tab tertutup.</p>
+              <p className="text-xs text-ink-soft">
+                {pushState === "sync-failed"
+                  ? "Gagal tersambung ke server. Coba aktifkan lagi."
+                  : "Biar tetap dipanggil meski tab tertutup."}
+              </p>
             </div>
             <button onClick={handleEnablePush} className="shrink-0 rounded-lg bg-accent text-white text-sm font-semibold px-3 py-1.5 hover:bg-accent-dark">
               Aktifkan
