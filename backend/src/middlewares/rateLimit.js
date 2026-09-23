@@ -25,3 +25,15 @@ export const authLimiter = rateLimit({
     "Terlalu banyak percobaan autentikasi. Coba lagi dalam 15 menit."
   ),
 });
+
+// Endpoint notifikasi tes bersifat publik (cukup participant_token), jadi dibatasi
+// agar tidak bisa dipakai spam notifikasi ke peserta mana pun.
+export const pushTestLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  handler: tooManyRequests(
+    "Terlalu banyak permintaan notifikasi tes. Coba lagi dalam 5 menit."
+  ),
+});

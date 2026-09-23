@@ -3,6 +3,7 @@ import { db } from "../config/database.js";
 import { pushSubscriptions, queueEntries } from "../db/schema.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { env } from "../config/env.js";
+import { sendPushToParticipant } from "../services/pushService.js";
 
 export const getVapidPublic = async (req, res) => {
   return sendSuccess(res, "VAPID public key", { publicKey: env.VAPID_PUBLIC_KEY });
@@ -31,6 +32,40 @@ export const subscribePush = async (req, res, next) => {
 
     const [created] = await db.insert(pushSubscriptions).values({ participant_token, endpoint, p256dh, auth }).returning();
     return sendSuccess(res, "Berhasil subscribe notifikasi.", { subscription: created }, 201);
+  } catch (e) { next(e); }
+};
+
+// Notifikasi tes: dipakai tombol "Tes notifikasi" di halaman tiket peserta.
+// Tujuannya memastikan subscription benar-benar berfungsi di perangkat peserta
+// (terutama iOS, yang butuh app terpasang di Home Screen agar push bisa masuk).
+export const sendTestPush = async (req, res, next) => {
+  try {
+    const { participant_token } = req.body;
+    if (!participant_token) return sendError(res, "participant_token wajib.", null, 400);
+
+    const [entry] = await db
+      .select({ id: queueEntries.id })
+      .from(queueEntries)
+      .where(eq(queueEntries.participant_token, participant_token))
+      .limit(1);
+    if (!entry) return sendError(res, "participant_token tidak ditemukan.", null, 404);
+
+    const result = await sendPushToParticipant(participant_token, {
+      title: "🔔 Notifikasi tes OurQueue",
+      body: "Berhasil! Notifikasi di perangkat ini berfungsi normal.",
+      icon: "/favicon.svg",
+      badge: "/favicon.svg",
+      tag: "ourqueue-test",
+      data: { url: "/", type: "test" },
+      type: "test",
+    });
+
+    // Selalu 200 dengan flag sent: kegagalan kirim bukan error server, tapi info
+    // yang UI tampilkan apa adanya (mis. "subscription belum tersimpan").
+    return sendSuccess(res, result.sent ? "Notifikasi tes terkirim." : "Notifikasi tes gagal terkirim.", {
+      sent: !!result.sent,
+      reason: result.sent ? null : result.reason || "unknown",
+    });
   } catch (e) { next(e); }
 };
 

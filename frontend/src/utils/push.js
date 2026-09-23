@@ -70,6 +70,35 @@ export function isPushSupported() {
   return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 }
 
+// iOS: push hanya jalan kalau web-nya dipasang ke Home Screen (iOS 16.4+).
+// Di Safari biasa, browser memang tidak menawarkan Web Push sama sekali.
+export function isIos() {
+  if (typeof window === "undefined") return false;
+  const ua = window.navigator.userAgent || "";
+  // iPadOS 13+ melapor sebagai "Macintosh" tapi punya sentuhan.
+  return /iphone|ipad|ipod/i.test(ua) || (ua.includes("Macintosh") && "ontouchend" in document);
+}
+
+// True saat web berjalan sebagai app terpasang (Home Screen di iOS, install PWA
+// di Android/desktop). Di standalone inilah Web Push di iOS diperbolehkan.
+export function isStandalone() {
+  if (typeof window === "undefined") return false;
+  try {
+    return (
+      window.navigator.standalone === true ||
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.matchMedia("(display-mode: fullscreen)").matches
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isIosSafari() {
+  const ua = typeof window !== "undefined" ? window.navigator.userAgent || "" : "";
+  return isIos() && /safari/i.test(ua) && !/crios|fxios|edgios/i.test(ua);
+}
+
 export async function registerSW() {
   if (!("serviceWorker" in navigator)) return null;
   try {

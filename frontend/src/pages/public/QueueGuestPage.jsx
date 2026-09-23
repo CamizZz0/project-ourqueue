@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { Loader2, Ticket, Users, AlertCircle, CheckCircle2, SkipForward, Bell } from "lucide-react";
 import api from "../../utils/api";
-import { registerSW, subscribePush, isPushSupported } from "../../utils/push";
+import { registerSW, subscribePush, isPushSupported, isIos, isStandalone } from "../../utils/push";
 import { supportsEntryStream, openTicketStream } from "../../utils/entryStream";
 import { setParticipantManifest, resetManifest } from "../../utils/manifest";
 import { rememberLastTicket, forgetLastTicket } from "../../utils/lastTicket";
@@ -85,7 +85,28 @@ export default function QueueGuestPage() {
   const [pushState, setPushState] = useState("idle");
   // off | connecting | live | error — status koneksi SSE (update realtime)
   const [streamState, setStreamState] = useState("off");
+  // idle | sending | sent | <alasan gagal>
+  const [testState, setTestState] = useState("idle");
+  // iOS Safari biasa melarang Web Push — hanya app Home Screen yang boleh.
+  // Disimpan di state supaya bisa dinilai ulang saat user kembali dari proses
+  // "Tambah ke Layar Utama" (status standalone baru aktif setelah dipasang).
+  const [iosBrowser, setIosBrowser] = useState(false);
+  const [iosStandalone, setIosStandalone] = useState(false);
   const prevStatusRef = useRef(null);
+
+  useEffect(() => {
+    const evaluate = () => {
+      setIosBrowser(isIos());
+      setIosStandalone(isStandalone());
+    };
+    evaluate();
+    document.addEventListener("visibilitychange", evaluate);
+    window.addEventListener("focus", evaluate);
+    return () => {
+      document.removeEventListener("visibilitychange", evaluate);
+      window.removeEventListener("focus", evaluate);
+    };
+  }, []);
 
   useEffect(() => {
     api
@@ -341,6 +362,28 @@ export default function QueueGuestPage() {
     applyPushResult(r);
   };
 
+  // Minta server mengirim notifikasi tes, untuk memastikan subscription benar-benar
+  // berfungsi di perangkat ini (khususnya iOS yang punya banyak syarat).
+  const handleTestPush = async () => {
+    if (!ticket || testState === "sending") return;
+    setTestState("sending");
+    try {
+      const res = await api.post("/push/test", { participant_token: ticket.participant_token });
+      setTestState(res.data?.sent ? "sent" : res.data?.reason || "gagal terkirim");
+    } catch (err) {
+      setTestState(err.message || "gagal terkirim");
+    }
+  };
+
+  const testStateText =
+    testState === "sending"
+      ? "Mengirim notifikasi tes..."
+      : testState === "sent"
+        ? "Terkirim! Cek notifikasinya di perangkat ini."
+        : testState === "idle"
+          ? "Pastikan notifikasi benar-benar masuk di perangkat ini."
+          : `Gagal: ${testState}. Coba aktifkan ulang notifikasinya.`;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -421,16 +464,31 @@ export default function QueueGuestPage() {
           </div>
         </div>
         {ticket.status === "waiting" && pushState === "unsupported" && (
-          <p className="text-center text-xs text-ink-soft mt-3">
-            Notifikasi otomatis tidak didukung di browser ini — halaman ini tetap diperbarui sendiri.
-          </p>
+          iosBrowser && !iosStandalone ? (
+            // iOS Safari biasa: Web Push memang tidak diizinkan sebelum app dipasang.
+            <div className="mt-4 rounded-xl border border-mist bg-white p-3 text-left">
+              <p className="text-sm font-semibold text-ink flex items-center gap-1.5"><Bell size={14} /> Notifikasi di iPhone/iPad</p>
+              <ol className="text-xs text-ink-soft mt-1.5 space-y-1 list-decimal list-inside leading-relaxed">
+                <li>Ketuk tombol <span className="font-semibold text-ink">Share</span> di Safari.</li>
+                <li>Pilih <span className="font-semibold text-ink">Tambah ke Layar Utama</span>.</li>
+                <li>Buka app dari Home Screen, lalu tekan <span className="font-semibold text-ink">Aktifkan</span> notifikasi di sana.</li>
+              </ol>
+              <p className="text-xs text-ink-soft mt-1.5">
+                Safari di iOS hanya mengizinkan notifikasi untuk app yang sudah dipasang (iOS 16.4+).
+              </p>
+            </div>
+          ) : (
+            <p className="text-center text-xs text-ink-soft mt-3">
+              Notifikasi otomatis tidak didukung di browser ini — halaman ini tetap diperbarui sendiri.
+            </p>
+          )
         )}
         {ticket.status === "waiting" && pushState === "checking" && (
           <p className="text-center text-xs text-ink-soft mt-3 flex items-center justify-center gap-1">
             <Bell size={12} /> Memeriksa status notifikasi...
           </p>
         )}
-        {ticket.status === "waiting" && (pushState === "idle" || pushState === "sync-failed") && (
+        {ticket.status === "waiting" && !(iosBrowser && !iosStandalone) && (pushState === "idle" || pushState === "sync-failed") && (
           <div className="mt-4 rounded-xl border border-mist bg-white p-3 flex items-center justify-between gap-3">
             <div className="text-left">
               <p className="text-sm font-semibold text-ink flex items-center gap-1.5"><Bell size={14} /> Aktifkan notifikasi</p>
@@ -446,10 +504,29 @@ export default function QueueGuestPage() {
           </div>
         )}
         {pushState === "granted" && ticket.status === "waiting" && (
-          <p className="text-center text-xs text-ink-soft mt-3 flex items-center justify-center gap-1"><Bell size={12} /> Notifikasi aktif — kamu akan dipanggil meski tab tertutup.</p>
+          <>
+            <p className="text-center text-xs text-ink-soft mt-3 flex items-center justify-center gap-1"><Bell size={12} /> Notifikasi aktif — kamu akan dipanggil meski tab tertutup.</p>
+            <div className="mt-3 rounded-xl border border-mist bg-white p-3 flex items-center justify-between gap-3">
+              <div className="text-left">
+                <p className="text-sm font-semibold text-ink">Tes notifikasi</p>
+                <p className="text-xs text-ink-soft">{testStateText}</p>
+              </div>
+              <button
+                onClick={handleTestPush}
+                disabled={testState === "sending"}
+                className="shrink-0 rounded-lg border border-mist-dark text-ink text-xs font-semibold px-3 py-1.5 hover:bg-mist transition-colors disabled:opacity-60"
+              >
+                Kirim tes
+              </button>
+            </div>
+          </>
         )}
         {pushState === "denied" && (
-          <p className="text-center text-xs text-ink-soft mt-3">Notifikasi diblokir. Aktifkan di pengaturan browser.</p>
+          <p className="text-center text-xs text-ink-soft mt-3">
+            {iosBrowser
+              ? "Notifikasi diblokir. Buka Pengaturan iPhone → Safari (atau app ini) → aktifkan Notifikasi."
+              : "Notifikasi diblokir. Aktifkan di pengaturan browser."}
+          </p>
         )}
         {(ticket.status === "waiting" || ticket.status === "calling") && <InstallAppButton />}
         {FINAL_STATUSES.includes(ticket.status) && (
