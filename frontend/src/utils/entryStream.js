@@ -14,7 +14,7 @@ export function supportsEntryStream() {
  * Buka stream SSE status tiket peserta.
  *
  * handlers:
- * - onTicket(state)        → { tiket, sisa_antrean_di_depan }
+ * - onTicket(state)        → { tiket, sisa_antrean_di_depan, estimasi_menit }
  * - onGone()               → tiket sudah tidak ada di server
  * - onStatusChange(status) → "connecting" | "live" | "error"
  * - onError(reason)

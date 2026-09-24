@@ -25,6 +25,7 @@ const entryFields = {
   created_at: queueEntries.created_at,
   nama_antrean: queues.nama_antrean,
   queue_status: queues.status,
+  avg_service_minutes: queues.avg_service_minutes,
 };
 
 // State lengkap sebuah tiket (dipakai GET /:token dan event pertama pada stream)
@@ -54,6 +55,10 @@ async function loadEntryState(token) {
   return {
     tiket: entry,
     sisa_antrean_di_depan: Number(aheadCountResult?.count || 0),
+    estimasi_menit:
+      entry.status === "waiting"
+        ? Number(aheadCountResult?.count || 0) * (entry.avg_service_minutes ?? 5)
+        : 0,
   };
 }
 
@@ -71,6 +76,10 @@ async function loadEntryLightState(token) {
           AND ahead.status = 'waiting'
           AND ahead.nomor_antrean < ${queueEntries.nomor_antrean}
       )`.as("sisa_antrean_di_depan"),
+      avg_service_minutes: sql`(
+        SELECT ${queues.avg_service_minutes} FROM ${queues}
+        WHERE ${queues.id} = ${queueEntries.queue_id}
+      )`.as("avg_service_minutes"),
     })
     .from(queueEntries)
     .where(eq(queueEntries.participant_token, token))
@@ -78,13 +87,17 @@ async function loadEntryLightState(token) {
 
   if (!row) return null;
 
+  const sisa = Number(row.sisa_antrean_di_depan || 0);
+  const avg = Number(row.avg_service_minutes ?? 5);
+
   return {
     tiket: {
       participant_token: row.participant_token,
       nomor_antrean: row.nomor_antrean,
       status: row.status,
     },
-    sisa_antrean_di_depan: Number(row.sisa_antrean_di_depan || 0),
+    sisa_antrean_di_depan: sisa,
+    estimasi_menit: row.status === "waiting" ? sisa * avg : 0,
   };
 }
 
@@ -94,7 +107,7 @@ function sseWrite(res, event, data) {
 }
 
 const stateSignature = (state) =>
-  `${state.tiket.status}|${state.tiket.nomor_antrean}|${state.sisa_antrean_di_depan}`;
+  `${state.tiket.status}|${state.tiket.nomor_antrean}|${state.sisa_antrean_di_depan}|${state.estimasi_menit ?? 0}`;
 
 export const takeQueueEntry = async (req, res, next) => {
   try {

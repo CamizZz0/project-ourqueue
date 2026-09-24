@@ -40,7 +40,7 @@ export default function QueueDetailPanel({ queueId, onClose, onQueueChanged }) {
   const [copied, setCopied] = useState(false);
 
   const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState({ nama_antrean: "", deskripsi: "", enabled_fields: [] });
+  const [editForm, setEditForm] = useState({ nama_antrean: "", deskripsi: "", enabled_fields: [], avg_service_minutes: "5" });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
@@ -152,6 +152,7 @@ export default function QueueDetailPanel({ queueId, onClose, onQueueChanged }) {
       nama_antrean: queue.nama_antrean,
       deskripsi: queue.deskripsi || "",
       enabled_fields: Array.isArray(queue.enabled_fields) ? queue.enabled_fields : [],
+      avg_service_minutes: String(queue.avg_service_minutes ?? 5),
     });
     setEditError("");
     setEditing(true);
@@ -179,10 +180,12 @@ export default function QueueDetailPanel({ queueId, onClose, onQueueChanged }) {
     }
     setEditSaving(true);
     try {
+      const avg = Math.min(Math.max(Number(editForm.avg_service_minutes) || 5, 1), 120);
       const res = await api.put(`/queues/${queueId}`, {
         nama_antrean: editForm.nama_antrean.trim(),
         deskripsi: editForm.deskripsi.trim() || null,
         enabled_fields: editForm.enabled_fields,
+        avg_service_minutes: avg,
       });
       setQueue(res.data.queue);
       setEditing(false);
@@ -216,6 +219,9 @@ export default function QueueDetailPanel({ queueId, onClose, onQueueChanged }) {
           <div>
             <h2 className="font-bold text-ink text-lg">{queue?.nama_antrean || "Memuat..."}</h2>
             {queue?.deskripsi && <p className="text-sm text-ink-soft mt-0.5">{queue.deskripsi}</p>}
+            {queue?.avg_service_minutes != null && (
+              <p className="text-xs text-ink-soft mt-1">±{queue.avg_service_minutes} mnt/orang</p>
+            )}
           </div>
           <div className="flex items-center gap-3">
             {queue && !editing && (
@@ -282,6 +288,19 @@ export default function QueueDetailPanel({ queueId, onClose, onQueueChanged }) {
                   </button>
                 ))}
               </div>
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-ink mb-1.5">
+                Rata-rata waktu layan <span className="text-ink-soft font-normal">(menit/orang)</span>
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={editForm.avg_service_minutes}
+                onChange={(e) => setEditForm((p) => ({ ...p, avg_service_minutes: e.target.value }))}
+                className="w-full rounded-lg border border-mist-dark px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent transition"
+              />
             </div>
             <div className="flex items-center gap-2 pt-1">
               <button

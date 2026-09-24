@@ -12,6 +12,7 @@ export default function CreateQueueModal({ onClose, onCreated }) {
   const [namaAntrean, setNamaAntrean] = useState("");
   const [deskripsi, setDeskripsi] = useState("");
   const [fields, setFields] = useState(["nama"]);
+  const [avgMinutes, setAvgMinutes] = useState("5");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -34,10 +35,12 @@ export default function CreateQueueModal({ onClose, onCreated }) {
     }
     setLoading(true);
     try {
+      const avg = Math.min(Math.max(Number(avgMinutes) || 5, 1), 120);
       const res = await api.post("/queues", {
         nama_antrean: namaAntrean.trim(),
         deskripsi: deskripsi.trim(),
         enabled_fields: fields,
+        avg_service_minutes: avg,
       });
       onCreated(res.data.queue);
     } catch (err) {
@@ -89,8 +92,7 @@ export default function CreateQueueModal({ onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-ink mb-1.5">Data yang diisi peserta</label>
-            <div className="flex flex-wrap gap-2">
+            <label className="block text-sm font-semibold text-ink mb-1.5">Data yang diisi peserta</label>            <div className="flex flex-wrap gap-2">
               {FIELD_OPTIONS.map((opt) => (
                 <button
                   type="button"
@@ -110,6 +112,24 @@ export default function CreateQueueModal({ onClose, onCreated }) {
               {fields.length === 0
                 ? "Tidak ada data — peserta cukup ambil nomor tanpa isi apa pun."
                 : "Peserta wajib mengisi field yang dipilih."}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold text-ink mb-1.5">
+              Rata-rata waktu layan <span className="text-ink-soft font-normal">(menit/orang)</span>
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={120}
+              value={avgMinutes}
+              onChange={(e) => setAvgMinutes(e.target.value)}
+              placeholder="5"
+              className="w-full rounded-lg border border-mist-dark px-3.5 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent transition"
+            />
+            <p className="text-xs text-ink-soft mt-1.5">
+              Dipakai menghitung estimasi waktu tunggu peserta.
             </p>
           </div>
 

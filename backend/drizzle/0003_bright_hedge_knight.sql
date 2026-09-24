@@ -1,0 +1,1 @@
+ALTER TABLE "queues" ADD COLUMN "avg_service_minutes" integer DEFAULT 5 NOT NULL;

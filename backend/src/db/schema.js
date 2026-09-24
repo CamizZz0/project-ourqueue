@@ -26,6 +26,8 @@ export const queues = pgTable("queues", {
   qr_code_token: varchar("qr_code_token", { length: 255 }).notNull().unique(),
   // status: 'active', 'paused', 'closed'
   status: varchar("status", { length: 50 }).default("active").notNull(),
+  // avg_service_minutes: rata-rata menit melayani 1 peserta, dipakai menghitung estimasi waktu tunggu
+  avg_service_minutes: integer("avg_service_minutes").default(5).notNull(),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 

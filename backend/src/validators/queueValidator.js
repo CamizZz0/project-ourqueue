@@ -23,6 +23,13 @@ const lenientLimit = (def) =>
     z.number().int().min(1).max(100).default(def)
   );
 
+const AVG_MSG = "Rata-rata waktu layan harus berupa angka 1-120 menit.";
+const avgServiceMinutes = z.coerce
+  .number({ error: AVG_MSG })
+  .int(AVG_MSG)
+  .min(1, AVG_MSG)
+  .max(120, AVG_MSG);
+
 export const queueIdParam = {
   params: z.object({
     id: z.coerce.number({ error: ID_ANTRIAN_MSG }).int(ID_ANTRIAN_MSG),
@@ -58,6 +65,7 @@ export const createQueueSchema = {
       )
       .optional()
       .default(["nama", "nomor_telepon"]),
+    avg_service_minutes: avgServiceMinutes.optional().default(5),
   }),
 };
 
@@ -81,6 +89,7 @@ export const updateQueueSchema = {
           'enabled_fields harus berupa array non-kosong, misal: ["nama", "nomor_telepon"].'
         )
         .optional(),
+      avg_service_minutes: avgServiceMinutes.optional(),
     })
     .refine((o) => Object.keys(o).length > 0, {
       message: "Tidak ada field yang diubah.",

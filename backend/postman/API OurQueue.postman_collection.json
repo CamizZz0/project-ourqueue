@@ -124,7 +124,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nama_antrean\": \"Registrasi Event UniVerse\",\n  \"deskripsi\": \"Antrean untuk pendaftaran ulang peserta event\",\n  \"enabled_fields\": [\"nama\", \"nomor_telepon\"]\n}",
+              "raw": "{\n  \"nama_antrean\": \"Registrasi Event UniVerse\",\n  \"deskripsi\": \"Antrean untuk pendaftaran ulang peserta event\",\n  \"enabled_fields\": [\"nama\", \"nomor_telepon\"],\n  \"avg_service_minutes\": 5\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{base_url}}/api/queues", "host": ["{{base_url}}"], "path": ["api", "queues"] }
@@ -254,7 +254,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nama_antrean\": \"Registrasi Event UniVerse (revisi)\",\n  \"deskripsi\": \"Deskripsi diperbarui\"\n}",
+              "raw": "{\n  \"nama_antrean\": \"Registrasi Event UniVerse (revisi)\",\n  \"deskripsi\": \"Deskripsi diperbarui\",\n  \"avg_service_minutes\": 7\n}",
               "options": { "raw": { "language": "json" } }
             },
             "url": { "raw": "{{base_url}}/api/queues/{{queue_id}}", "host": ["{{base_url}}"], "path": ["api", "queues", "{{queue_id}}"] }

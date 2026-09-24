@@ -7,7 +7,7 @@ import { notifyCalling } from "../services/pushService.js";
 
 export const createQueue = async (req, res, next) => {
   try {
-    const { nama_antrean, deskripsi, enabled_fields } = req.body;
+    const { nama_antrean, deskripsi, enabled_fields, avg_service_minutes } = req.body;
 
     const userId = req.user.id;
 
@@ -20,6 +20,7 @@ export const createQueue = async (req, res, next) => {
         nama_antrean,
         deskripsi,
         enabled_fields,
+        avg_service_minutes: avg_service_minutes ?? 5,
         qr_code_token: qrCodeToken,
         status: "active",
       })
@@ -127,6 +128,7 @@ export const getQueueByQrToken = async (req, res, next) => {
         deskripsi: queues.deskripsi,
         enabled_fields: queues.enabled_fields,
         status: queues.status,
+        avg_service_minutes: queues.avg_service_minutes,
         created_at: queues.created_at,
       })
       .from(queues)
@@ -167,6 +169,8 @@ export const getQueueByQrToken = async (req, res, next) => {
       live_stats: {
         waiting_count: Number(waitingCount?.count || 0),
         current_calling: currentCalling || null,
+        estimasi_menit:
+          Number(waitingCount?.count || 0) * (queue.avg_service_minutes ?? 5),
       },
     });
   } catch (error) {
@@ -353,7 +357,7 @@ export const updateQueue = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { id: queueId } = req.valid.params;
-    const { nama_antrean, deskripsi, enabled_fields } = req.body;
+    const { nama_antrean, deskripsi, enabled_fields, avg_service_minutes } = req.body;
 
     const [existing] = await db
       .select()
@@ -380,6 +384,9 @@ export const updateQueue = async (req, res, next) => {
     }
     if (enabled_fields !== undefined) {
       patch.enabled_fields = enabled_fields;
+    }
+    if (avg_service_minutes !== undefined) {
+      patch.avg_service_minutes = avg_service_minutes;
     }
 
     const [updated] = await db

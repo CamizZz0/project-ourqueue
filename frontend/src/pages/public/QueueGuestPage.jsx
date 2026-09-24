@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "react-router-dom";
-import { Loader2, Ticket, Users, AlertCircle, CheckCircle2, SkipForward, Bell } from "lucide-react";
+import { Loader2, Ticket, Users, AlertCircle, CheckCircle2, SkipForward, Bell, Clock } from "lucide-react";
 import api from "../../utils/api";
 import { registerSW, subscribePush, isPushSupported, isIos, isStandalone } from "../../utils/push";
 import { supportsEntryStream, openTicketStream } from "../../utils/entryStream";
@@ -30,6 +30,15 @@ const MAX_POLL_INTERVAL_MS = 30000;
 const FETCH_ATTEMPTS = 3;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Format menit menjadi "15 mnt" atau "1 jam 15 mnt".
+function formatEstimasi(totalMenit) {
+  const m = Math.max(Math.round(totalMenit || 0), 0);
+  if (m < 60) return `${m} mnt`;
+  const jam = Math.floor(m / 60);
+  const sisa = m % 60;
+  return sisa === 0 ? `${jam} jam` : `${jam} jam ${sisa} mnt`;
+}
 
 // Simpan token peserta di URL (/q/<qrToken>?t=<token>). Dipakai supaya app yang
 // dipasang ke Home Screen mendarat di tiket peserta: Android/desktop lewat start_url
@@ -75,6 +84,8 @@ export default function QueueGuestPage() {
   const [submitting, setSubmitting] = useState(false);
   const [ticket, setTicket] = useState(null);
   const [aheadCount, setAheadCount] = useState(0);
+  const [estimasi, setEstimasi] = useState(0);
+  const [liveEstimasi, setLiveEstimasi] = useState(null);
   // true selama masih ada tiket tersimpan: form pendaftaran tidak boleh muncul
   // supaya user tidak mengambil nomor baru tanpa sengaja.
   const [hasSavedTicket, setHasSavedTicket] = useState(false);
@@ -111,7 +122,15 @@ export default function QueueGuestPage() {
   useEffect(() => {
     api
       .get(`/queues/qr/${qrToken}`)
-      .then((res) => setQueue(res.data.queue))
+      .then((res) => {
+        setQueue(res.data.queue);
+        if (typeof res.data?.live_stats?.estimasi_menit === "number") {
+          setLiveEstimasi({
+            waiting: res.data.live_stats.waiting_count ?? 0,
+            menit: res.data.live_stats.estimasi_menit ?? 0,
+          });
+        }
+      })
       .catch((err) => setError(err.message || "Antrean tidak ditemukan."))
       .finally(() => setLoading(false));
   }, [qrToken]);
@@ -181,6 +200,7 @@ export default function QueueGuestPage() {
       if (cached?.tiket) {
         setTicket(cached.tiket);
         setAheadCount(cached.sisa_antrean_di_depan ?? 0);
+        setEstimasi(cached.estimasi_menit ?? 0);
         prevStatusRef.current = cached.tiket.status ?? null;
       }
     } catch {}
@@ -205,6 +225,7 @@ export default function QueueGuestPage() {
     localStorage.removeItem(cachedTicketKey);
     setTicket(null);
     setAheadCount(0);
+    setEstimasi(0);
     setTicketError("");
     setHasSavedTicket(false);
     prevStatusRef.current = null;
@@ -216,13 +237,14 @@ export default function QueueGuestPage() {
   // Satu pintu untuk semua update tiket, dipakai oleh polling DAN stream SSE.
   // Update state dilakukan sebelum apa pun yang menyentuh API notifikasi, supaya
   // kegagalan notifikasi tidak pernah bisa menggagalkan update status tiket.
-  const applyTicketData = useCallback((newTicket, sisaAntreanDiDepan) => {
+  const applyTicketData = useCallback((newTicket, sisaAntreanDiDepan, estimasiMenit) => {
     if (!newTicket) return;
 
     const wasWaiting = prevStatusRef.current === "waiting";
     prevStatusRef.current = newTicket.status;
     setTicket((prev) => ({ ...prev, ...newTicket }));
     if (typeof sisaAntreanDiDepan === "number") setAheadCount(sisaAntreanDiDepan);
+    if (typeof estimasiMenit === "number") setEstimasi(estimasiMenit);
     setTicketError("");
     fetchFailuresRef.current = 0;
 
@@ -237,6 +259,10 @@ export default function QueueGuestPage() {
             typeof sisaAntreanDiDepan === "number"
               ? sisaAntreanDiDepan
               : cached?.sisa_antrean_di_depan ?? 0,
+          estimasi_menit:
+            typeof estimasiMenit === "number"
+              ? estimasiMenit
+              : cached?.estimasi_menit ?? 0,
         })
       );
     } catch {}
@@ -255,6 +281,7 @@ export default function QueueGuestPage() {
     localStorage.removeItem(cachedTicketKey);
     setHasSavedTicket(false);
     setTicket(null);
+    setEstimasi(0);
     setTicketError("");
     prevStatusRef.current = null;
     // URL juga dibersihkan, biar token yang sudah mati tidak ikut terpakai lagi.
@@ -270,7 +297,7 @@ export default function QueueGuestPage() {
     for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
       try {
         const res = await api.get(`/entries/${participantToken}`);
-        applyTicketData(res.data.tiket, res.data.sisa_antrean_di_depan);
+        applyTicketData(res.data.tiket, res.data.sisa_antrean_di_depan, res.data.estimasi_menit);
         return;
       } catch (err) {
         lastError = err;
@@ -303,7 +330,7 @@ export default function QueueGuestPage() {
     setStreamState("connecting");
     const stream = openTicketStream(participantToken, {
       onStatusChange: setStreamState,
-      onTicket: (state) => applyTicketData(state?.tiket, state?.sisa_antrean_di_depan),
+      onTicket: (state) => applyTicketData(state?.tiket, state?.sisa_antrean_di_depan, state?.estimasi_menit),
       onGone: clearSavedTicket,
       onError: () => setStreamState("error"),
     });
@@ -395,12 +422,15 @@ export default function QueueGuestPage() {
       });
       const token = res.data.entry.participant_token;
       localStorage.setItem(storageKey, token);
+      const sisaBaru = Math.max(res.data.entry.nomor_antrean - 1, 0);
+      const estimasiBaru = sisaBaru * (queue?.avg_service_minutes ?? 5);
       try {
         localStorage.setItem(
           cachedTicketKey,
           JSON.stringify({
             tiket: res.data.entry,
-            sisa_antrean_di_depan: Math.max(res.data.entry.nomor_antrean - 1, 0),
+            sisa_antrean_di_depan: sisaBaru,
+            estimasi_menit: estimasiBaru,
           })
         );
       } catch {}
@@ -408,7 +438,8 @@ export default function QueueGuestPage() {
       setTicketError("");
       setTicket(res.data.entry);
       prevStatusRef.current = res.data.entry.status;
-      setAheadCount(res.data.entry.nomor_antrean - 1);
+      setAheadCount(sisaBaru);
+      setEstimasi(estimasiBaru);
       // langsung coba subscribe push di background (tidak blokir UX)
       if (isPushSupported()) {
         subscribePush(token).then(applyPushResult);
@@ -456,6 +487,11 @@ export default function QueueGuestPage() {
               <p className="text-sm text-ink-soft flex items-center justify-center gap-1.5">
                 <Users size={14} />
                 {aheadCount} orang di depan kamu
+              </p>
+            )}
+            {ticket.status === "waiting" && estimasi > 0 && (
+              <p className="text-sm text-ink-soft flex items-center justify-center gap-1.5 mt-1">
+                <Clock size={14} />± {formatEstimasi(estimasi)} lagi
               </p>
             )}
             {ticket.status === "calling" && (
@@ -599,6 +635,17 @@ export default function QueueGuestPage() {
         </span>
         <h1 className="text-xl font-extrabold text-ink">{queue?.nama_antrean}</h1>
         {queue?.deskripsi && <p className="text-sm text-ink-soft mt-1">{queue.deskripsi}</p>}
+        {liveEstimasi != null && liveEstimasi.waiting > 0 && (
+          <p className="text-sm text-ink-soft mt-2 flex items-center justify-center gap-1.5">
+            <Users size={14} />
+            {liveEstimasi.waiting} menunggu
+            {liveEstimasi.menit > 0 && (
+              <span className="flex items-center gap-1">
+                · <Clock size={14} />± {formatEstimasi(liveEstimasi.menit)}
+              </span>
+            )}
+          </p>
+        )}
       </div>
 
       {isNotAcceptingEntries ? (
