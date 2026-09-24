@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../config/database.js";
-import { pushSubscriptions, queueEntries } from "../db/schema.js";
+import { pushSubscriptions, queueEntries, queues } from "../db/schema.js";
 import { sendSuccess, sendError } from "../utils/response.js";
 import { env } from "../config/env.js";
 import { sendPushToParticipant } from "../services/pushService.js";

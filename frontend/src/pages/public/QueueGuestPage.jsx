@@ -6,7 +6,6 @@ import { registerSW, subscribePush, isPushSupported, isIos, isStandalone } from 
 import { supportsEntryStream, openTicketStream } from "../../utils/entryStream";
 import { setParticipantManifest, resetManifest } from "../../utils/manifest";
 import { rememberLastTicket, forgetLastTicket } from "../../utils/lastTicket";
-import InstallAppButton from "../../components/common/InstallAppButton";
 
 const FIELD_LABELS = {
   nama: "Nama",
@@ -564,7 +563,6 @@ export default function QueueGuestPage() {
               : "Notifikasi diblokir. Aktifkan di pengaturan browser."}
           </p>
         )}
-        {(ticket.status === "waiting" || ticket.status === "calling") && <InstallAppButton />}
         {FINAL_STATUSES.includes(ticket.status) && (
           <button
             onClick={resetTicket}
