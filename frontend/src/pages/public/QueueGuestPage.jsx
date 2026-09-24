@@ -4,6 +4,7 @@ import { Loader2, Ticket, Users, AlertCircle, CheckCircle2, SkipForward, Bell, C
 import api from "../../utils/api";
 import { registerSW, subscribePush, isPushSupported, isIos, isStandalone } from "../../utils/push";
 import { supportsEntryStream, openTicketStream } from "../../utils/entryStream";
+import { isValidTicketPayload } from "../../utils/entryState";
 import { setParticipantManifest, resetManifest } from "../../utils/manifest";
 import { rememberLastTicket, forgetLastTicket } from "../../utils/lastTicket";
 
@@ -84,10 +85,10 @@ export default function QueueGuestPage() {
   const [ticket, setTicket] = useState(null);
   const [aheadCount, setAheadCount] = useState(0);
   const [estimasi, setEstimasi] = useState(0);
-  // false = angka estimasi belum dikonfirmasi server (masih cache basi / belum
-  // ada respons network). Selama basi, angka TIDAK ditampilkan supaya tidak ada
-  // angka yang tiba-tiba lenyap saat koreksi tiba.
-  const [estimasiFresh, setEstimasiFresh] = useState(false);
+  // false = angka count & estimasi belum dikonfirmasi server (masih cache basi /
+  // belum ada respons network). Selama belum fresh, angka TIDAK ditampilkan
+  // supaya tidak ada angka basi yang tiba-tiba terkoreksi di layar.
+  const [dataFresh, setDataFresh] = useState(false);
   const [liveEstimasi, setLiveEstimasi] = useState(null);
   // true selama masih ada tiket tersimpan: form pendaftaran tidak boleh muncul
   // supaya user tidak mengambil nomor baru tanpa sengaja.
@@ -229,7 +230,7 @@ export default function QueueGuestPage() {
     setTicket(null);
     setAheadCount(0);
     setEstimasi(0);
-    setEstimasiFresh(false);
+    setDataFresh(false);
     setTicketError("");
     setHasSavedTicket(false);
     prevStatusRef.current = null;
@@ -252,7 +253,7 @@ export default function QueueGuestPage() {
       setEstimasi(estimasiMenit);
       // applyTicketData hanya dipanggil dari respons network (fetch/SSE),
       // jadi angka ini fresh dari server.
-      setEstimasiFresh(true);
+      setDataFresh(true);
     }
     setTicketError("");
     fetchFailuresRef.current = 0;
@@ -291,7 +292,7 @@ export default function QueueGuestPage() {
     setHasSavedTicket(false);
     setTicket(null);
     setEstimasi(0);
-    setEstimasiFresh(false);
+    setDataFresh(false);
     setTicketError("");
     prevStatusRef.current = null;
     // URL juga dibersihkan, biar token yang sudah mati tidak ikut terpakai lagi.
@@ -307,6 +308,13 @@ export default function QueueGuestPage() {
     for (let attempt = 1; attempt <= FETCH_ATTEMPTS; attempt++) {
       try {
         const res = await api.get(`/entries/${participantToken}`);
+        // Tolak payload rusak/tidak lengkap/tertukar tanpa menyentuh state:
+        // angka lama tetap tampil sampai data valid tiba. Transisi antrean
+        // yang asli selalu lolos validasi sehingga tetap realtime.
+        if (!isValidTicketPayload(res.data, participantToken)) {
+          console.warn("[tiket] respons diabaikan (tidak valid):", JSON.stringify(res.data)?.slice(0, 200));
+          return;
+        }
         applyTicketData(res.data.tiket, res.data.sisa_antrean_di_depan, res.data.estimasi_menit);
         return;
       } catch (err) {
@@ -340,7 +348,15 @@ export default function QueueGuestPage() {
     setStreamState("connecting");
     const stream = openTicketStream(participantToken, {
       onStatusChange: setStreamState,
-      onTicket: (state) => applyTicketData(state?.tiket, state?.sisa_antrean_di_depan, state?.estimasi_menit),
+      onTicket: (state) => {
+        // Penjagaan yang sama seperti polling: event rusak/tertukar
+        // diabaikan, angka lama dipertahankan sampai event valid tiba.
+        if (!isValidTicketPayload(state, participantToken)) {
+          console.warn("[tiket] event SSE diabaikan (tidak valid)");
+          return;
+        }
+        applyTicketData(state?.tiket, state?.sisa_antrean_di_depan, state?.estimasi_menit);
+      },
       onGone: clearSavedTicket,
       onError: () => setStreamState("error"),
     });
@@ -435,10 +451,10 @@ export default function QueueGuestPage() {
       // Pakai angka asli dari server (bukan nomor-1): tiket depan yang sudah
       // selesai/dilewati/dihapus tidak ikut dihitung. Kalau backend lama belum
       // membalas field ini, sinkronkan via fetchTicket sebagai fallback.
-      if (typeof res.data.sisa_antrean_di_depan === "number") {
+      if (typeof res.data.sisa_antrean_di_depan === "number" && Number.isFinite(res.data.sisa_antrean_di_depan)) {
         const sisaBaru = res.data.sisa_antrean_di_depan;
         const estimasiBaru =
-          typeof res.data.estimasi_menit === "number"
+          typeof res.data.estimasi_menit === "number" && Number.isFinite(res.data.estimasi_menit)
             ? res.data.estimasi_menit
             : sisaBaru * (queue?.avg_service_minutes ?? 5);
         try {
@@ -458,7 +474,7 @@ export default function QueueGuestPage() {
         setAheadCount(sisaBaru);
         setEstimasi(estimasiBaru);
         // Data langsung dari respons server = fresh.
-        setEstimasiFresh(true);
+        setDataFresh(true);
       } else {
         setHasSavedTicket(true);
         setTicketError("");
@@ -509,24 +525,30 @@ export default function QueueGuestPage() {
               <Icon size={18} />
               {copy.title}
             </div>
-            {ticket.status === "waiting" && (
+            {ticket.status === "waiting" && dataFresh && (
               <p className="text-sm text-ink-soft flex items-center justify-center gap-1.5">
                 <Users size={14} />
                 {aheadCount} orang di depan kamu
               </p>
             )}
-            {ticket.status === "waiting" && estimasiFresh && estimasi > 0 && (
+            {ticket.status === "waiting" && !dataFresh && (
+              <p className="text-sm text-ink-soft/60 flex items-center justify-center gap-1.5">
+                <Users size={14} />
+                Memuat posisi antrean...
+              </p>
+            )}
+            {ticket.status === "waiting" && dataFresh && estimasi > 0 && (
               <p className="text-sm text-ink-soft flex items-center justify-center gap-1.5 mt-1">
                 <Clock size={14} />± {formatEstimasi(estimasi)} lagi
               </p>
             )}
-            {ticket.status === "waiting" && estimasiFresh && estimasi <= 0 && (
+            {ticket.status === "waiting" && dataFresh && estimasi <= 0 && (
               <p className="text-sm text-ink-soft flex items-center justify-center gap-1.5 mt-1">
                 <Clock size={14} />
                 Segera dipanggil
               </p>
             )}
-            {ticket.status === "waiting" && !estimasiFresh && (
+            {ticket.status === "waiting" && !dataFresh && (
               <p className="text-sm text-ink-soft/60 flex items-center justify-center gap-1.5 mt-1">
                 <Clock size={14} />
                 Menghitung estimasi...

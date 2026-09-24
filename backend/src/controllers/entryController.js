@@ -28,10 +28,21 @@ const entryFields = {
   avg_service_minutes: queues.avg_service_minutes,
 };
 
-// State lengkap sebuah tiket (dipakai GET /:token dan event pertama pada stream)
+// State lengkap sebuah tiket (dipakai GET /:token dan event pertama pada stream).
+// ATOMIK dalam 1 round trip: tiket + hitungan di depan dibaca dalam SATU
+// snapshot statement yang sama, sehingga tidak ada jendela di mana entry dan
+// count berasal dari dua waktu baca berbeda (tepat di tengah transisi status).
 async function loadEntryState(token) {
   const [entry] = await db
-    .select(entryFields)
+    .select({
+      ...entryFields,
+      sisa_antrean_di_depan: sql`(
+        SELECT COUNT(*) FROM ${queueEntries} AS ahead
+        WHERE ahead.queue_id = ${queueEntries.queue_id}
+          AND ahead.status = 'waiting'
+          AND ahead.nomor_antrean < ${queueEntries.nomor_antrean}
+      )`.as("sisa_antrean_di_depan"),
+    })
     .from(queueEntries)
     .innerJoin(queues, eq(queueEntries.queue_id, queues.id))
     .where(eq(queueEntries.participant_token, token))
@@ -39,26 +50,14 @@ async function loadEntryState(token) {
 
   if (!entry) return null;
 
-  const [aheadCountResult] = await db
-    .select({
-      count: sql`COUNT(*)`.as("count"),
-    })
-    .from(queueEntries)
-    .where(
-      and(
-        eq(queueEntries.queue_id, entry.queue_id),
-        eq(queueEntries.status, "waiting"),
-        lt(queueEntries.nomor_antrean, entry.nomor_antrean)
-      )
-    );
+  const { sisa_antrean_di_depan: sisaRaw, ...tiket } = entry;
+  const sisa = Number(sisaRaw || 0);
+  const avg = tiket.avg_service_minutes ?? 5;
 
   return {
-    tiket: entry,
-    sisa_antrean_di_depan: Number(aheadCountResult?.count || 0),
-    estimasi_menit:
-      entry.status === "waiting"
-        ? Number(aheadCountResult?.count || 0) * (entry.avg_service_minutes ?? 5)
-        : 0,
+    tiket,
+    sisa_antrean_di_depan: sisa,
+    estimasi_menit: tiket.status === "waiting" ? sisa * avg : 0,
   };
 }
 
