@@ -172,6 +172,23 @@ export const takeQueueEntry = async (req, res, next) => {
         })
         .returning();
 
+      // Hitung sisa & estimasi asli dalam transaksi yang sama: hanya yang masih
+      // 'waiting' dengan nomor lebih kecil (tiket depan yang selesai/dilewati/
+      // dihapus tidak ikut dihitung). Jadi first paint frontend langsung benar.
+      const [aheadRow] = await tx
+        .select({ count: sql`COUNT(*)`.as("count") })
+        .from(queueEntries)
+        .where(
+          and(
+            eq(queueEntries.queue_id, numericQueueId),
+            eq(queueEntries.status, "waiting"),
+            lt(queueEntries.nomor_antrean, nextQueueNumber)
+          )
+        );
+
+      const sisa_antrean_di_depan = Number(aheadRow?.count || 0);
+      const avg = queue.avg_service_minutes ?? 5;
+
       return {
         data: {
           entry: newEntry,
@@ -180,6 +197,8 @@ export const takeQueueEntry = async (req, res, next) => {
             nama_antrean: queue.nama_antrean,
             deskripsi: queue.deskripsi,
           },
+          sisa_antrean_di_depan,
+          estimasi_menit: sisa_antrean_di_depan * avg,
         },
       };
     });

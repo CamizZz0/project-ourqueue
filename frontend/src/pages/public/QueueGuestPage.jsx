@@ -421,24 +421,38 @@ export default function QueueGuestPage() {
       });
       const token = res.data.entry.participant_token;
       localStorage.setItem(storageKey, token);
-      const sisaBaru = Math.max(res.data.entry.nomor_antrean - 1, 0);
-      const estimasiBaru = sisaBaru * (queue?.avg_service_minutes ?? 5);
-      try {
-        localStorage.setItem(
-          cachedTicketKey,
-          JSON.stringify({
-            tiket: res.data.entry,
-            sisa_antrean_di_depan: sisaBaru,
-            estimasi_menit: estimasiBaru,
-          })
-        );
-      } catch {}
-      setHasSavedTicket(true);
-      setTicketError("");
-      setTicket(res.data.entry);
-      prevStatusRef.current = res.data.entry.status;
-      setAheadCount(sisaBaru);
-      setEstimasi(estimasiBaru);
+      // Pakai angka asli dari server (bukan nomor-1): tiket depan yang sudah
+      // selesai/dilewati/dihapus tidak ikut dihitung. Kalau backend lama belum
+      // membalas field ini, sinkronkan via fetchTicket sebagai fallback.
+      if (typeof res.data.sisa_antrean_di_depan === "number") {
+        const sisaBaru = res.data.sisa_antrean_di_depan;
+        const estimasiBaru =
+          typeof res.data.estimasi_menit === "number"
+            ? res.data.estimasi_menit
+            : sisaBaru * (queue?.avg_service_minutes ?? 5);
+        try {
+          localStorage.setItem(
+            cachedTicketKey,
+            JSON.stringify({
+              tiket: res.data.entry,
+              sisa_antrean_di_depan: sisaBaru,
+              estimasi_menit: estimasiBaru,
+            })
+          );
+        } catch {}
+        setHasSavedTicket(true);
+        setTicketError("");
+        setTicket(res.data.entry);
+        prevStatusRef.current = res.data.entry.status;
+        setAheadCount(sisaBaru);
+        setEstimasi(estimasiBaru);
+      } else {
+        setHasSavedTicket(true);
+        setTicketError("");
+        setTicket(res.data.entry);
+        prevStatusRef.current = res.data.entry.status;
+        fetchTicket(token);
+      }
       // langsung coba subscribe push di background (tidak blokir UX)
       if (isPushSupported()) {
         subscribePush(token).then(applyPushResult);
@@ -491,6 +505,12 @@ export default function QueueGuestPage() {
             {ticket.status === "waiting" && estimasi > 0 && (
               <p className="text-sm text-ink-soft flex items-center justify-center gap-1.5 mt-1">
                 <Clock size={14} />± {formatEstimasi(estimasi)} lagi
+              </p>
+            )}
+            {ticket.status === "waiting" && estimasi <= 0 && (
+              <p className="text-sm text-ink-soft flex items-center justify-center gap-1.5 mt-1">
+                <Clock size={14} />
+                Segera dipanggil
               </p>
             )}
             {ticket.status === "calling" && (
