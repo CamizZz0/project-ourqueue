@@ -26,5 +26,6 @@ export const loginSchema = {
       .toLowerCase()
       .min(1, REQUIRED_LOGIN),
     password: z.string({ error: REQUIRED_LOGIN }).min(1, REQUIRED_LOGIN),
+    remember_me: z.coerce.boolean().optional().default(false),
   }),
 };

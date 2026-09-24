@@ -38,6 +38,7 @@ export const env = {
   DATABASE_URL: required("DATABASE_URL"),
   JWT_SECRET: requiredSecret("JWT_SECRET", 32),
   JWT_EXPIRES_IN: optional("JWT_EXPIRES_IN", "7d"),
+  JWT_REMEMBER_EXPIRES_IN: optional("JWT_REMEMBER_EXPIRES_IN", "30d"),
   CLIENT_ORIGINS: optional("CLIENT_ORIGIN", "http://localhost:5173")
     .split(",")
     .map((o) => o.trim())

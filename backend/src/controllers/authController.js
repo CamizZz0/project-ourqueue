@@ -76,7 +76,7 @@ export const register = async (req, res, next) => {
 
 export const login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, remember_me } = req.body;
 
     const [user] = await db
       .select()
@@ -120,7 +120,7 @@ export const login = async (req, res, next) => {
         role: user.role,
       },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn: remember_me ? env.JWT_REMEMBER_EXPIRES_IN : JWT_EXPIRES_IN }
     );
 
     return sendSuccess(res, "Login berhasil.", {

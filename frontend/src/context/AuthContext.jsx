@@ -40,8 +40,8 @@ export function AuthProvider({ children }) {
       .finally(() => setCheckingAuth(false));
   }, []);
 
-  const login = useCallback(async (email, password) => {
-    const res = await api.post("/auth/login", { email, password });
+  const login = useCallback(async (email, password, rememberMe = false) => {
+    const res = await api.post("/auth/login", { email, password, remember_me: rememberMe });
     const { token, user: loggedInUser } = res.data;
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(loggedInUser));
