@@ -84,6 +84,10 @@ export default function QueueGuestPage() {
   const [ticket, setTicket] = useState(null);
   const [aheadCount, setAheadCount] = useState(0);
   const [estimasi, setEstimasi] = useState(0);
+  // false = angka estimasi belum dikonfirmasi server (masih cache basi / belum
+  // ada respons network). Selama basi, angka TIDAK ditampilkan supaya tidak ada
+  // angka yang tiba-tiba lenyap saat koreksi tiba.
+  const [estimasiFresh, setEstimasiFresh] = useState(false);
   const [liveEstimasi, setLiveEstimasi] = useState(null);
   // true selama masih ada tiket tersimpan: form pendaftaran tidak boleh muncul
   // supaya user tidak mengambil nomor baru tanpa sengaja.
@@ -225,6 +229,7 @@ export default function QueueGuestPage() {
     setTicket(null);
     setAheadCount(0);
     setEstimasi(0);
+    setEstimasiFresh(false);
     setTicketError("");
     setHasSavedTicket(false);
     prevStatusRef.current = null;
@@ -243,7 +248,12 @@ export default function QueueGuestPage() {
     prevStatusRef.current = newTicket.status;
     setTicket((prev) => ({ ...prev, ...newTicket }));
     if (typeof sisaAntreanDiDepan === "number") setAheadCount(sisaAntreanDiDepan);
-    if (typeof estimasiMenit === "number") setEstimasi(estimasiMenit);
+    if (typeof estimasiMenit === "number") {
+      setEstimasi(estimasiMenit);
+      // applyTicketData hanya dipanggil dari respons network (fetch/SSE),
+      // jadi angka ini fresh dari server.
+      setEstimasiFresh(true);
+    }
     setTicketError("");
     fetchFailuresRef.current = 0;
 
@@ -281,6 +291,7 @@ export default function QueueGuestPage() {
     setHasSavedTicket(false);
     setTicket(null);
     setEstimasi(0);
+    setEstimasiFresh(false);
     setTicketError("");
     prevStatusRef.current = null;
     // URL juga dibersihkan, biar token yang sudah mati tidak ikut terpakai lagi.
@@ -446,6 +457,8 @@ export default function QueueGuestPage() {
         prevStatusRef.current = res.data.entry.status;
         setAheadCount(sisaBaru);
         setEstimasi(estimasiBaru);
+        // Data langsung dari respons server = fresh.
+        setEstimasiFresh(true);
       } else {
         setHasSavedTicket(true);
         setTicketError("");
@@ -502,15 +515,21 @@ export default function QueueGuestPage() {
                 {aheadCount} orang di depan kamu
               </p>
             )}
-            {ticket.status === "waiting" && estimasi > 0 && (
+            {ticket.status === "waiting" && estimasiFresh && estimasi > 0 && (
               <p className="text-sm text-ink-soft flex items-center justify-center gap-1.5 mt-1">
                 <Clock size={14} />± {formatEstimasi(estimasi)} lagi
               </p>
             )}
-            {ticket.status === "waiting" && estimasi <= 0 && (
+            {ticket.status === "waiting" && estimasiFresh && estimasi <= 0 && (
               <p className="text-sm text-ink-soft flex items-center justify-center gap-1.5 mt-1">
                 <Clock size={14} />
                 Segera dipanggil
+              </p>
+            )}
+            {ticket.status === "waiting" && !estimasiFresh && (
+              <p className="text-sm text-ink-soft/60 flex items-center justify-center gap-1.5 mt-1">
+                <Clock size={14} />
+                Menghitung estimasi...
               </p>
             )}
             {ticket.status === "calling" && (
