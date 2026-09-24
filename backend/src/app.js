@@ -13,6 +13,11 @@ import pushRoutes from "./routes/pushRoutes.js";
 
 const app = express();
 
+// Vercel meneruskan request lewat 1 hop proxy (header X-Forwarded-For/Forwarded).
+// Tanpa ini, express-rate-limit salah mengidentifikasi IP klien dan melempar
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR, plus semua user terbaca satu IP yang sama.
+app.set("trust proxy", 1);
+
 app.use(
   helmet({
     crossOriginEmbedderPolicy: false,
